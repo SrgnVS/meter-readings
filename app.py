@@ -91,4 +91,4 @@ def get_readings():
 if __name__ == '__main__':
     app.run(debug=True)
 
-«Добавлен основной код»
+#«Добавлен основной код»
