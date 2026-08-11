@@ -3,7 +3,7 @@ from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 app = Flask(__name__)
 CORS(app)
@@ -31,7 +31,7 @@ def init_db():
             meter_reading TEXT,
             photo_filename TEXT,
             timestamp TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            created_at TEXT
         )
     ''')
     conn.commit()
@@ -59,27 +59,31 @@ def upload():
             photo_file.save(filepath)
             photo_filename = filename
 
+        # Московское время (UTC+3)
+        moscow_tz = timezone(timedelta(hours=3))
+        moscow_now = datetime.now(moscow_tz).strftime("%Y-%m-%d %H:%M:%S")
+
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO readings (qr, meter_reading, photo_filename, timestamp)
-            VALUES (?, ?, ?, ?)
-        ''', (qr_data, meter_value, photo_filename, timestamp))
+            INSERT INTO readings (qr, meter_reading, photo_filename, timestamp, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (qr_data, meter_value, photo_filename, timestamp, moscow_now))
         conn.commit()
         conn.close()
 
         return jsonify({
             "status": "ok",
-            "message": f"✅ Данные сохранены. Показания: {meter_value}",
+            "message": f"OK. Meter reading: {meter_value}",
             "id": cursor.lastrowid
         }), 200
     except Exception as e:
-        print(f"Ошибка: {e}")
+        print(f"Error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/')
 def index():
-    return 'Сервер для приёма показаний счётчиков работает!'
+    return 'Server for meter readings is running!'
 
 @app.route('/readings', methods=['GET'])
 def get_readings():
@@ -92,5 +96,3 @@ def get_readings():
 
 if __name__ == '__main__':
     app.run(debug=True)
-
-#«Добавлен основной код»
