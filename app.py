@@ -254,14 +254,18 @@ def readings_view():
         latest_file = files_sorted[0]
         file_path = latest_file['path']
         
-        # Загружаем содержимое (путь уже начинается с /)
-        file_url = f"https://cdn.relaxdev.ru{file_path}"
+        # Формируем URL для скачивания файла
+        # Путь в ответе начинается с /, но добавим слеш на всякий случай
+        if file_path.startswith('/'):
+            file_url = f"https://cdn.relaxdev.ru{file_path}"
+        else:
+            file_url = f"https://cdn.relaxdev.ru/{file_path}"
+        
         csv_response = requests.get(file_url)
         if csv_response.status_code != 200:
-            return "Не удалось загрузить бэкап", 500
+            return f"Не удалось загрузить бэкап: {csv_response.status_code}", 500
         
         csv_content = csv_response.text
-        # Парсим CSV
         reader = csv.reader(StringIO(csv_content), delimiter=';')
         rows = list(reader)
         if not rows:
