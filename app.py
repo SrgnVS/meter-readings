@@ -47,7 +47,7 @@ init_db()
 
 # ---------- ФУНКЦИЯ ОБНОВЛЕНИЯ CSV В ХРАНИЛИЩЕ ----------
 def update_storage_csv():
-    """Генерирует CSV с читаемыми заголовками и датами, загружает в хранилище"""
+    """Генерирует CSV и сохраняет в хранилище как readings.csv (перезаписывая)"""
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -60,10 +60,7 @@ def update_storage_csv():
             return
 
         si = StringIO()
-        # Используем точку с запятой и кавычки
         cw = csv.writer(si, delimiter=';', quoting=csv.QUOTE_ALL)
-
-        # Заголовки на русском
         cw.writerow([
             'ID записи',
             'Счётчик (QR)',
@@ -72,25 +69,20 @@ def update_storage_csv():
             'Время отправки (UTC)',
             'Время сохранения (МСК)'
         ])
-
         for row in rows:
-            # Форматируем даты
-            created_at = row['created_at'] or ''
-            timestamp = row['timestamp'] or ''
-
             cw.writerow([
                 row['id'],
                 row['qr'] or '',
                 row['meter_reading'] or '',
                 row['photo_filename'] or '',
-                timestamp,
-                created_at
+                row['timestamp'] or '',
+                row['created_at'] or ''
             ])
 
         csv_data = si.getvalue().encode('utf-8-sig')
 
-        # Имя файла с датой
-        filename = f"readings_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        # Всегда одно и то же имя
+        filename = 'readings.csv'
         files = {'file': (filename, csv_data, 'text/csv')}
         data = {'path': 'data', 'webp': 'false'}
         headers = {'Authorization': f'Bearer {STORAGE_API_KEY}'}
@@ -100,9 +92,10 @@ def update_storage_csv():
         if response.status_code == 200:
             print(f"✅ CSV обновлён: {filename}")
         else:
-            print(f"❌ Ошибка: {response.status_code} - {response.text}")
+            print(f"❌ Ошибка обновления CSV: {response.status_code} - {response.text}")
     except Exception as e:
-        print(f"❌ Исключение: {e}")
+        print(f"❌ Исключение при обновлении CSV: {e}")
+        
     
 # ---------- ЭНДПОИНТЫ ----------
 @app.route('/upload', methods=['POST'])
