@@ -47,7 +47,7 @@ init_db()
 
 # ---------- ФУНКЦИЯ ОБНОВЛЕНИЯ CSV В ХРАНИЛИЩЕ ----------
 def update_storage_csv():
-    """Генерирует CSV из всех записей и загружает в хранилище RelaxDev по пути data/readings.csv"""
+    """Генерирует CSV с кавычками и точкой с запятой, загружает в хранилище"""
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -60,27 +60,35 @@ def update_storage_csv():
             return
 
         si = StringIO()
-        cw = csv.writer(si)
+        # Используем точку с запятой как разделитель, и кавычки для всех полей
+        cw = csv.writer(si, delimiter=';', quoting=csv.QUOTE_ALL)
         cw.writerow(['id', 'qr', 'meter_reading', 'photo_url', 'timestamp', 'created_at'])
         for row in rows:
-            cw.writerow([row['id'], row['qr'], row['meter_reading'], row['photo_filename'], row['timestamp'], row['created_at']])
+            # Все поля оборачиваются в кавычки автоматически
+            cw.writerow([
+                row['id'],
+                row['qr'] or '',
+                row['meter_reading'] or '',
+                row['photo_filename'] or '',
+                row['timestamp'] or '',
+                row['created_at'] or ''
+            ])
 
-        csv_data = si.getvalue().encode('utf-8')
+        csv_data = si.getvalue().encode('utf-8-sig')  # добавляем BOM для Excel
 
         files = {'file': ('readings.csv', csv_data, 'text/csv')}
-        data = {'path': 'data', 'webp': 'false'}  # сохраняем в папку data, не конвертируем в webp
+        data = {'path': 'data', 'webp': 'false'}
         headers = {'Authorization': f'Bearer {STORAGE_API_KEY}'}
 
         response = requests.post(STORAGE_UPLOAD_URL, headers=headers, files=files, data=data)
 
         if response.status_code == 200:
-            print("✅ CSV успешно обновлён в хранилище")
-            print(f"Ссылка: https://cdn.relaxdev.ru/users/.../data/readings.csv")
+            print("✅ CSV успешно обновлён")
         else:
             print(f"❌ Ошибка обновления CSV: {response.status_code} - {response.text}")
     except Exception as e:
         print(f"❌ Исключение при обновлении CSV: {e}")
-
+        
 # ---------- ЭНДПОИНТЫ ----------
 @app.route('/upload', methods=['POST'])
 def upload():
@@ -187,13 +195,20 @@ def export_csv():
     conn.close()
 
     si = StringIO()
-    cw = csv.writer(si)
+    cw = csv.writer(si, delimiter=';', quoting=csv.QUOTE_ALL)
     cw.writerow(['id', 'qr', 'meter_reading', 'photo_url', 'timestamp', 'created_at'])
     for row in rows:
-        cw.writerow([row['id'], row['qr'], row['meter_reading'], row['photo_filename'], row['timestamp'], row['created_at']])
+        cw.writerow([
+            row['id'],
+            row['qr'] or '',
+            row['meter_reading'] or '',
+            row['photo_filename'] or '',
+            row['timestamp'] or '',
+            row['created_at'] or ''
+        ])
 
     response = app.response_class(
-        si.getvalue(),
+        si.getvalue().encode('utf-8-sig'),
         mimetype='text/csv',
         headers={'Content-Disposition': 'attachment;filename=readings.csv'}
     )
