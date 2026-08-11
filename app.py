@@ -240,55 +240,24 @@ def readings_view():
         headers_row = rows[0]
         data_rows = rows[1:]
         
-        html_template = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>Показания счётчиков</title>
-            <style>
-                body { font-family: system-ui, -apple-system, sans-serif; background: #f0f4f8; padding: 20px; margin: 0; }
-                .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
-                h1 { font-size: 24px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
-                .badge { font-size: 14px; font-weight: normal; color: #64748b; }
-                table { width: 100%; border-collapse: collapse; font-size: 14px; }
-                th { background: #2563eb; color: white; padding: 10px 12px; text-align: left; position: sticky; top: 0; }
-                td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; }
-                tr:hover { background: #f8fafc; }
-                .refresh-btn { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; }
-                .refresh-btn:hover { background: #1d4ed8; }
-                @media (max-width: 600px) { table { font-size: 12px; } th, td { padding: 6px 8px; } }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>
-                    <span>📊 Показания счётчиков</span>
-                    <span class="badge">Последний бэкап: {last_modified}</span>
-                    <button class="refresh-btn" onclick="location.reload()">🔄 Обновить</button>
-                </h1>
-                <div style="overflow-x: auto;">
-                    <table>
-                        <thead><tr>{headers}</tr></thead>
-                        <tbody>{rows}</tbody>
-                    </table>
-                </div>
-                <div style="margin-top: 16px; font-size: 12px; color: #64748b;">Всего записей: {count}</div>
-            </div>
-        </body>
-        </html>
-        """
-        headers_html = ''.join(f'<th>{col}</th>' for col in headers_row)
-        rows_html = ''.join(f'<tr>{"".join(f"<td>{col}</td>" for col in row)}</tr>' for row in data_rows)
-        last_modified = datetime.fromisoformat(latest_file['lastModified']).strftime('%d.%m.%Y %H:%M:%S')
+        # Генерируем HTML-таблицу
+        html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Показания счётчиков</title>"
+        html += "<style>body{font-family:system-ui,-apple-system,sans-serif;background:#f0f4f8;padding:20px;margin:0}.container{max-width:1200px;margin:0 auto;background:#fff;padding:20px;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,.1)}h1{font-size:24px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}.badge{font-size:14px;font-weight:400;color:#64748b}table{width:100%;border-collapse:collapse;font-size:14px}th{background:#2563eb;color:#fff;padding:10px 12px;text-align:left;position:sticky;top:0}td{padding:8px 12px;border-bottom:1px solid #e5e7eb}tr:hover{background:#f8fafc}.refresh-btn{background:#2563eb;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:14px}.refresh-btn:hover{background:#1d4ed8}@media(max-width:600px){table{font-size:12px}th,td{padding:6px 8px}}</style>"
+        html += "</head><body><div class='container'><h1><span>📊 Показания счётчиков</span><span class='badge'>Последний бэкап: " + datetime.fromisoformat(latest_file['lastModified']).strftime('%d.%m.%Y %H:%M:%S') + "</span><button class='refresh-btn' onclick='location.reload()'>🔄 Обновить</button></h1><div style='overflow-x:auto;'><table><thead><tr>"
         
-        return html_template.format(
-            last_modified=last_modified,
-            headers=headers_html,
-            rows=rows_html,
-            count=len(data_rows)
-        )
+        for col in headers_row:
+            html += f"<th>{col}</th>"
+        html += "</tr></thead><tbody>"
+        
+        for row in data_rows:
+            html += "<tr>"
+            for col in row:
+                html += f"<td>{col}</td>"
+            html += "</tr>"
+        
+        html += f"</tbody></table></div><div style='margin-top:16px;font-size:12px;color:#64748b;'>Всего записей: {len(data_rows)}</div></div></body></html>"
+        
+        return html
     except Exception as e:
         return f"Ошибка: {e}", 500
 
