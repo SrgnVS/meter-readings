@@ -248,71 +248,18 @@ def readings_view():
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <title>Показания счётчиков</title>
             <style>
-    body { 
-        font-family: system-ui, -apple-system, sans-serif; 
-        background: #f0f4f8; 
-        padding: 20px; 
-        margin: 0;
-    }
-    .container { 
-        max-width: 1200px; 
-        margin: 0 auto; 
-        background: white; 
-        padding: 20px; 
-        border-radius: 16px; 
-        box-shadow: 0 4px 20px rgba(0,0,0,0.1); 
-    }
-    h1 { 
-        font-size: 24px; 
-        margin-bottom: 16px; 
-        display: flex; 
-        justify-content: space-between; 
-        align-items: center; 
-        flex-wrap: wrap; 
-        gap: 10px; 
-    }
-    .badge { 
-        font-size: 14px; 
-        font-weight: normal; 
-        color: #64748b; 
-    }
-    table { 
-        width: 100%; 
-        border-collapse: collapse; 
-        font-size: 14px; 
-    }
-    th { 
-        background: #2563eb; 
-        color: white; 
-        padding: 10px 12px; 
-        text-align: left; 
-        position: sticky; 
-        top: 0; 
-    }
-    td { 
-        padding: 8px 12px; 
-        border-bottom: 1px solid #e5e7eb; 
-    }
-    tr:hover { 
-        background: #f8fafc; 
-    }
-    .refresh-btn { 
-        background: #2563eb; 
-        color: white; 
-        border: none; 
-        padding: 8px 16px; 
-        border-radius: 8px; 
-        cursor: pointer; 
-        font-size: 14px; 
-    }
-    .refresh-btn:hover { 
-        background: #1d4ed8; 
-    }
-    @media (max-width: 600px) { 
-        table { font-size: 12px; } 
-        th, td { padding: 6px 8px; } 
-    }
-</style>
+                body { font-family: system-ui, -apple-system, sans-serif; background: #f0f4f8; padding: 20px; margin: 0; }
+                .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+                h1 { font-size: 24px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+                .badge { font-size: 14px; font-weight: normal; color: #64748b; }
+                table { width: 100%; border-collapse: collapse; font-size: 14px; }
+                th { background: #2563eb; color: white; padding: 10px 12px; text-align: left; position: sticky; top: 0; }
+                td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; }
+                tr:hover { background: #f8fafc; }
+                .refresh-btn { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+                .refresh-btn:hover { background: #1d4ed8; }
+                @media (max-width: 600px) { table { font-size: 12px; } th, td { padding: 6px 8px; } }
+            </style>
         </head>
         <body>
             <div class="container">
