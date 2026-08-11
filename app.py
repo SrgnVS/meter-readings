@@ -1,9 +1,12 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
+from flask import send_file
 from werkzeug.utils import secure_filename
 import os
 import sqlite3
 from datetime import datetime, timedelta, timezone
+import csv
+from io import StringIO
 
 app = Flask(__name__)
 CORS(app)
@@ -101,3 +104,23 @@ def download_db():
 
 if __name__ == '__main__':
     app.run(debug=True)
+@app.route('/export')
+def export_csv():
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM readings ORDER BY created_at DESC')
+    rows = cursor.fetchall()
+    conn.close()
+
+    si = StringIO()
+    cw = csv.writer(si)
+    cw.writerow(['id', 'qr', 'meter_reading', 'photo_filename', 'timestamp', 'created_at'])
+    for row in rows:
+        cw.writerow([row['id'], row['qr'], row['meter_reading'], row['photo_filename'], row['timestamp'], row['created_at']])
+    
+    response = app.response_class(
+        si.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment;filename=readings.csv'}
+    )
+    return response
