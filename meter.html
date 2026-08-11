@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Счётчик</title>
+    <!-- Подключаем html5-qrcode -->
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <!-- Tesseract для распознавания цифр -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         * { box-sizing: border-box; font-family: system-ui, sans-serif; margin: 0; padding: 0; }
@@ -19,23 +21,13 @@
         .btn-danger { background: #dc2626; }
         .btn-success { background: #16a34a; }
         .btn:disabled { opacity: 0.5; pointer-events: none; }
-        .video-container { 
-            background: #1e293b; 
-            border-radius: 20px; 
-            overflow: hidden; 
-            position: relative; 
-            aspect-ratio: 4/3; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-        }
+        .video-container, .canvas-container { background: #1e293b; border-radius: 20px; overflow: hidden; position: relative; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; }
         #qr-reader { width: 100%; height: 100%; }
         .video-wrapper {
             position: relative;
             width: 100%;
             height: 100%;
             background: #000;
-            overflow: hidden;
         }
         .video-wrapper video {
             width: 100%;
@@ -43,7 +35,7 @@
             object-fit: cover;
             display: block;
         }
-        /* Новая улучшенная рамка */
+        /* Рамка для выделения области */
         .crop-overlay {
             position: absolute;
             top: 0;
@@ -53,19 +45,21 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            pointer-events: none; /* чтобы можно было управлять камерой */
+            pointer-events: none;
             z-index: 10;
-            
-         .crop-box {
+        }
+        .crop-box {
             width: 70%;
-            height: 35%;
-            border: 3px solid #FFD700;
-            border-radius: 12px;
-            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.4);
-            background: transparent;
+            height: 40%;
+            border: 4px solid #FFD700;
+            border-radius: 16px;
+            background: rgba(255, 215, 0, 0.05);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
             position: relative;
-            }
-            
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
         .crop-box::before {
             content: '';
             position: absolute;
@@ -97,33 +91,8 @@
             padding: 4px 12px;
             border-radius: 20px;
         }
-        .canvas-container { 
-            background: #1e293b; 
-            border-radius: 20px; 
-            overflow: hidden; 
-            position: relative; 
-            aspect-ratio: 4/3; 
-            display: flex; 
-            align-items: center; 
-            justify-content: center; 
-        }
-        #canvas-preview { 
-            object-fit: contain; 
-            background: #0f172a; 
-            max-width: 100%;
-            max-height: 100%;
-        }
-        .overlay-text { 
-            position: absolute; 
-            bottom: 16px; 
-            left: 50%; 
-            transform: translateX(-50%); 
-            background: rgba(0,0,0,0.7); 
-            color: white; 
-            padding: 6px 16px; 
-            border-radius: 40px; 
-            font-size: 14px; 
-        }
+        #canvas-preview { object-fit: contain; background: #0f172a; }
+        .overlay-text { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); color: white; padding: 6px 16px; border-radius: 40px; font-size: 14px; }
         .input-group { display: flex; flex-direction: column; gap: 6px; }
         .input-group label { font-weight: 500; font-size: 14px; color: #374151; }
         .input-group input { padding: 12px 16px; border: 2px solid #d1d5db; border-radius: 12px; font-size: 18px; outline: none; transition: 0.2s; }
@@ -137,12 +106,6 @@
         .hidden { display: none; }
         #pending-count { text-align:center; font-size:14px; color:#64748b; margin-top:8px; }
         #qr-result { font-size:14px; text-align:center; min-height: 24px; margin-top: 8px; }
-
-        /* Адаптив для маленьких экранов */
-        @media (max-width: 480px) {
-            .crop-box { width: 85%; height: 35%; }
-            .crop-box::after { font-size: 12px; bottom: -28px; }
-        }
     </style>
 </head>
 <body>
@@ -157,7 +120,7 @@
         <div id="pending-count"></div>
     </div>
 
-    <!-- ШАГ 2: СКАНИРОВАНИЕ QR (html5-qrcode) -->
+    <!-- ШАГ 2: СКАНИРОВАНИЕ QR -->
     <div id="step-qr" class="step">
         <div class="video-container" id="qr-container">
             <div id="qr-reader"></div>
@@ -223,7 +186,7 @@
     (function() {
         'use strict';
 
-        // Проверка загрузки библиотек
+        // Проверяем загрузку html5-qrcode
         if (typeof Html5Qrcode === 'undefined') {
             alert('Ошибка: библиотека html5-qrcode не загружена!');
         } else {
@@ -262,7 +225,6 @@
             document.getElementById(id).classList.add('active');
         }
 
-        // Запуск камеры для фото
         async function startCamera(videoElement, facingMode = 'environment') {
             try {
                 if (stream) { stream.getTracks().forEach(t => t.stop()); }
@@ -349,7 +311,6 @@
             showStep('step-start');
         });
 
-        // Ручной ввод номера счётчика
         document.getElementById('btn-manual').addEventListener('click', () => {
             showStep('step-manual-id');
             document.getElementById('input-meter-id').value = '';
@@ -378,49 +339,45 @@
         });
         document.getElementById('btn-history-back').addEventListener('click', () => showStep('step-start'));
 
-        // ----- Фото с обрезкой -----
+        // ----- Фото с обрезкой по процентам -----
         async function startPhotoCamera() {
             const video = document.getElementById('photo-video');
             const ok = await startCamera(video, 'environment');
             if (!ok) showStep('step-start');
         }
 
-       document.getElementById('btn-take-photo').addEventListener('click', () => {
+        document.getElementById('btn-take-photo').addEventListener('click', () => {
             const video = document.getElementById('photo-video');
             if (!video.videoWidth || !video.videoHeight) { alert('Камера не готова'); return; }
-        
-            // Фиксированные проценты обрезки (центрированная область)
-            // Рамка в CSS должна соответствовать этим значениям
-            const cropLeft = 0.15;   // 15% от левого края
-            const cropTop = 0.30;    // 30% от верхнего края
+
+            // Фиксированные проценты обрезки (соответствуют рамке 70%×40%)
+            const cropLeft = 0.15;   // 15% слева
+            const cropTop = 0.30;    // 30% сверху
             const cropWidth = 0.70;  // 70% ширины
             const cropHeight = 0.40; // 40% высоты
-        
-            // Вычисляем координаты в пикселях видео
+
             const cropX = cropLeft * video.videoWidth;
             const cropY = cropTop * video.videoHeight;
             const cropW = cropWidth * video.videoWidth;
             const cropH = cropHeight * video.videoHeight;
-        
+
             // Захват всего кадра
             const tempCanvas = document.createElement('canvas');
             tempCanvas.width = video.videoWidth;
             tempCanvas.height = video.videoHeight;
             const ctx = tempCanvas.getContext('2d');
             ctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
-        
+
             // Вырезаем область
             const resultCanvas = document.createElement('canvas');
             resultCanvas.width = cropW;
             resultCanvas.height = cropH;
             const resultCtx = resultCanvas.getContext('2d');
             resultCtx.drawImage(tempCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-        
-            // Сохраняем обрезанное изображение
+
             resultCanvas.toBlob((blob) => {
                 currentMeterData.photoBlob = blob;
                 currentMeterData.photoDataURL = resultCanvas.toDataURL('image/jpeg', 0.92);
-                // Показываем превью обрезанного изображения
                 previewCanvas.width = cropW;
                 previewCanvas.height = cropH;
                 ctxPreview.clearRect(0, 0, cropW, cropH);
