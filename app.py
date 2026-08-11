@@ -51,9 +51,16 @@ def upload():
         timestamp = request.form.get('timestamp', datetime.now().isoformat())
         photo_file = request.files.get('photo')
 
-        time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-        safe_meter = ''.join(c for c in meter_value if c.isdigit()) or "no_value"
-        base_filename = f"{time_str}_{safe_meter}"
+        # Очищаем QR-код от недопустимых символов (оставляем буквы, цифры, дефис, подчёркивание)
+        qr_clean = ''.join(c for c in qr_data if c.isalnum() or c in '-_')
+        if not qr_clean:
+            qr_clean = "unknown"
+        
+        # Московское время для имени файла (без пробелов и двоеточий)
+        moscow_tz = timezone(timedelta(hours=3))
+        moscow_now = datetime.now(moscow_tz).strftime("%Y-%m-%d_%H-%M-%S")
+        
+        base_filename = f"{qr_clean}_{moscow_now}"
 
         photo_filename = None
         if photo_file and photo_file.filename != '':
