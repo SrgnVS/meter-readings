@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import os
@@ -8,15 +8,15 @@ from datetime import datetime, timedelta, timezone
 app = Flask(__name__)
 CORS(app)
 
-# Настройка папки для загрузки
+# ---------- НАСТРОЙКА ХРАНИЛИЩА ----------
 UPLOAD_FOLDER = '/tmp/uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 МБ
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
 
-# ---------- База данных ----------
+# ---------- БАЗА ДАННЫХ ----------
 def get_db():
-    db_path = '/data/meter_data.db'
+    db_path = os.path.join(os.path.dirname(__file__), 'meter_data.db')
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
@@ -39,7 +39,7 @@ def init_db():
 
 init_db()
 
-# ---------- Эндпоинты ----------
+# ---------- ЭНДПОИНТЫ ----------
 @app.route('/upload', methods=['POST'])
 def upload():
     try:
@@ -93,6 +93,11 @@ def get_readings():
     rows = cursor.fetchall()
     conn.close()
     return jsonify([dict(row) for row in rows])
+
+# Опционально: скачать базу данных
+@app.route('/download_db')
+def download_db():
+    return send_file('meter_data.db', as_attachment=True)
 
 if __name__ == '__main__':
     app.run(debug=True)
