@@ -8,6 +8,11 @@ import csv
 from io import StringIO
 import requests
 
+
+
+
+
+
 app = Flask(__name__)
 CORS(app)
 
@@ -296,3 +301,186 @@ def refresh_csv():
 
 if __name__ == '__main__':
     app.run(debug=True)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import csv
+from io import StringIO
+import requests
+from datetime import datetime
+import os
+
+# ... (ваш существующий код) ...
+
+@app.route('/readings_view')
+def readings_view():
+    """
+    Отображает последний бэкап из Storage в виде HTML-таблицы.
+    """
+    try:
+        # 1. Получаем список файлов в папке 'backups'
+        list_url = "https://relaxdev.ru/api/v1/storage/files?path=backups"
+        headers = {'Authorization': f'Bearer {STORAGE_API_KEY}'}
+        response = requests.get(list_url, headers=headers)
+        
+        if response.status_code != 200:
+            return "Не удалось получить список файлов", 500
+        
+        files = response.json().get('files', [])
+        if not files:
+            return "Нет бэкапов в хранилище", 404
+        
+        # 2. Находим самый свежий файл (по lastModified)
+        latest_file = max(files, key=lambda f: f.get('lastModified', ''))
+        file_path = latest_file['path']
+        
+        # 3. Загружаем содержимое файла
+        file_url = f"https://cdn.relaxdev.ru/{file_path}"
+        csv_response = requests.get(file_url)
+        if csv_response.status_code != 200:
+            return "Не удалось загрузить бэкап", 500
+        
+        csv_content = csv_response.text
+        
+        # 4. Парсим CSV
+        reader = csv.reader(StringIO(csv_content), delimiter=';')
+        rows = list(reader)
+        if not rows:
+            return "Бэкап пуст", 404
+        
+        headers_row = rows[0]
+        data_rows = rows[1:]
+        
+        # 5. Формируем HTML-страницу с таблицей
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Показания счётчиков</title>
+            <style>
+                body {{
+                    font-family: system-ui, sans-serif;
+                    background: #f0f4f8;
+                    padding: 20px;
+                }}
+                .container {{
+                    max-width: 1200px;
+                    margin: 0 auto;
+                    background: white;
+                    padding: 20px;
+                    border-radius: 16px;
+                    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+                }}
+                h1 {{
+                    font-size: 24px;
+                    margin-bottom: 16px;
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                }}
+                .badge {{
+                    font-size: 14px;
+                    font-weight: normal;
+                    color: #64748b;
+                }}
+                table {{
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-size: 14px;
+                }}
+                th {{
+                    background: #2563eb;
+                    color: white;
+                    padding: 10px 12px;
+                    text-align: left;
+                    position: sticky;
+                    top: 0;
+                }}
+                td {{
+                    padding: 8px 12px;
+                    border-bottom: 1px solid #e5e7eb;
+                }}
+                tr:hover {{
+                    background: #f8fafc;
+                }}
+                .photo-link {{
+                    color: #2563eb;
+                    text-decoration: none;
+                }}
+                .photo-link:hover {{
+                    text-decoration: underline;
+                }}
+                .empty {{
+                    text-align: center;
+                    color: #64748b;
+                    padding: 40px;
+                }}
+                .refresh-btn {{
+                    background: #2563eb;
+                    color: white;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-size: 14px;
+                }}
+                .refresh-btn:hover {{
+                    background: #1d4ed8;
+                }}
+                .timestamp {{
+                    color: #64748b;
+                    font-size: 12px;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>
+                    📊 Показания счётчиков
+                    <span class="badge">Последний бэкап: {datetime.fromisoformat(latest_file['lastModified']).strftime('%d.%m.%Y %H:%M:%S')}</span>
+                    <button class="refresh-btn" onclick="location.reload()">🔄 Обновить</button>
+                </h1>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                {''.join(f'<th>{col}</th>' for col in headers_row)}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {''.join(
+                                f'<tr>{''.join(f'<td>{col}</td>' for col in row)}</tr>'
+                                for row in data_rows
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+                <div style="margin-top: 16px; font-size: 12px; color: #64748b;">
+                    Всего записей: {len(data_rows)}
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        return html
+    except Exception as e:
+        return f"Ошибка: {e}", 500
