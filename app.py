@@ -60,14 +60,7 @@ def backup_readings_to_storage():
 
         si = StringIO()
         cw = csv.writer(si, delimiter=';', quoting=csv.QUOTE_ALL)
-        cw.writerow([
-            'ID',
-            'Счётчик (QR)',
-            'Показания',
-            'Ссылка на фото',
-            'Время отправки (МСК)',
-            'Время сохранения (МСК)'
-        ])
+        cw.writerow(['ID', 'QR', 'Показания', 'Ссылка на фото', 'Время отправки (МСК)', 'Время сохранения (МСК)'])
 
         moscow_tz = timezone(timedelta(hours=3))
 
@@ -84,7 +77,6 @@ def backup_readings_to_storage():
             else:
                 ts_formatted = ''
 
-            # Преобразуем created_at (уже МСК) в тот же формат
             created_str = row['created_at'] or ''
             if created_str:
                 try:
@@ -243,34 +235,92 @@ def get_local_photo(filename):
 @app.route('/readings_view')
 def readings_view():
     try:
-        # 1. Проверяем API-ключ
-        if not STORAGE_API_KEY:
-            return "Ошибка: STORAGE_API_KEY не задан", 500
-
-        # 2. Получаем список файлов
         list_url = "https://relaxdev.ru/api/v1/storage/files?path=data/backups"
         headers = {'Authorization': f'Bearer {STORAGE_API_KEY}'}
         response = requests.get(list_url, headers=headers)
+        if response.status_code != 200:
+            return f"Ошибка получения списка: {response.status_code}", 500
         
-        # 3. Выводим подробный отчёт
-        html = f"""
-        <h2>Отладка /readings_view</h2>
-        <p><b>API-ключ:</b> {'присутствует' if STORAGE_API_KEY else 'ОТСУТСТВУЕТ'}</p>
-        <p><b>Статус ответа от Storage API:</b> {response.status_code}</p>
-        <p><b>Ответ от Storage API:</b> {response.text}</p>
+        data = response.json()
+        if not data.get('success'):
+            return "API вернул ошибку", 500
+        
+        files = data.get('files', [])
+        if not files:
+            return "Нет бэкапов в папке data/backups", 404
+        
+        # Сортируем по lastModified (самый свежий последний)
+        files_sorted = sorted(files, key=lambda f: f.get('lastModified', ''), reverse=True)
+        latest_file = files_sorted[0]
+        file_path = latest_file['path']
+        
+        # Загружаем содержимое (путь уже начинается с /)
+        file_url = f"https://cdn.relaxdev.ru{file_path}"
+        csv_response = requests.get(file_url)
+        if csv_response.status_code != 200:
+            return "Не удалось загрузить бэкап", 500
+        
+        csv_content = csv_response.text
+        # Парсим CSV
+        reader = csv.reader(StringIO(csv_content), delimiter=';')
+        rows = list(reader)
+        if not rows:
+            return "Бэкап пуст", 404
+        
+        headers_row = rows[0]
+        data_rows = rows[1:]
+        
+        html_template = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Показания счётчиков</title>
+            <style>
+                body { font-family: system-ui, -apple-system, sans-serif; background: #f0f4f8; padding: 20px; margin: 0; }
+                .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+                h1 { font-size: 24px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+                .badge { font-size: 14px; font-weight: normal; color: #64748b; }
+                table { width: 100%; border-collapse: collapse; font-size: 14px; }
+                th { background: #2563eb; color: white; padding: 10px 12px; text-align: left; position: sticky; top: 0; }
+                td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; }
+                tr:hover { background: #f8fafc; }
+                .refresh-btn { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+                .refresh-btn:hover { background: #1d4ed8; }
+                @media (max-width: 600px) { table { font-size: 12px; } th, td { padding: 6px 8px; } }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>
+                    <span>📊 Показания счётчиков</span>
+                    <span class="badge">Последний бэкап: {last_modified}</span>
+                    <button class="refresh-btn" onclick="location.reload()">🔄 Обновить</button>
+                </h1>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead><tr>{headers}</tr></thead>
+                        <tbody>{rows}</tbody>
+                    </table>
+                </div>
+                <div style="margin-top: 16px; font-size: 12px; color: #64748b;">Всего записей: {count}</div>
+            </div>
+        </body>
+        </html>
         """
+        headers_html = ''.join(f'<th>{col}</th>' for col in headers_row)
+        rows_html = ''.join(f'<tr>{"".join(f"<td>{col}</td>" for col in row)}</tr>' for row in data_rows)
+        last_modified = datetime.fromisoformat(latest_file['lastModified']).strftime('%d.%m.%Y %H:%M:%S')
         
-        if response.status_code == 200:
-            files = response.json().get('files', [])
-            html += f"<p><b>Найдено файлов:</b> {len(files)}</p>"
-            for f in files:
-                html += f"<p>📄 {f['path']} (modified: {f.get('lastModified', '')})</p>"
-        else:
-            html += f"<p>❌ Ошибка: {response.status_code}</p>"
-        
-        return html
+        return html_template.format(
+            last_modified=last_modified,
+            headers=headers_html,
+            rows=rows_html,
+            count=len(data_rows)
+        )
     except Exception as e:
-        return f"❌ Исключение: {e}", 500
+        return f"Ошибка: {e}", 500
 
 if __name__ == '__main__':
     app.run(debug=True)
