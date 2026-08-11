@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import os
@@ -7,11 +7,6 @@ from datetime import datetime, timedelta, timezone
 import csv
 from io import StringIO
 import requests
-
-
-
-
-
 
 app = Flask(__name__)
 CORS(app)
@@ -22,7 +17,11 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
 
+# Получаем ключ доступа к Storage API
 STORAGE_API_KEY = os.environ.get('STORAGE_API_KEY')
+# Если ключ не найден, можно прописать явно (только для теста):
+# STORAGE_API_KEY = "sk_rd_ваш_ключ"
+
 STORAGE_UPLOAD_URL = "https://relaxdev.ru/api/v1/storage/upload"
 
 # ---------- БАЗА ДАННЫХ ----------
@@ -50,11 +49,10 @@ def init_db():
 
 init_db()
 
-# ---------- ФУНКЦИЯ ОБНОВЛЕНИЯ CSV В ХРАНИЛИЩЕ ----------
-def update_storage_csv():
-    """Обновляет readings.csv и сохраняет предыдущую версию как readings_old.csv"""
+# ---------- ФУНКЦИЯ БЭКАПА В STORAGE ----------
+def backup_readings_to_storage():
+    """Сохраняет текущие показания в папку data/backups с уникальным именем (с датой)"""
     try:
-        # 1. Генерируем новый CSV из БД
         conn = get_db()
         cursor = conn.cursor()
         cursor.execute('SELECT * FROM readings ORDER BY created_at DESC')
@@ -62,19 +60,12 @@ def update_storage_csv():
         conn.close()
 
         if not rows:
-            print("Нет данных для CSV, пропускаем обновление.")
+            print("Нет данных для бэкапа")
             return
 
         si = StringIO()
         cw = csv.writer(si, delimiter=';', quoting=csv.QUOTE_ALL)
-        cw.writerow([
-            'ID записи',
-            'Счётчик (QR)',
-            'Показания',
-            'Ссылка на фото',
-            'Время отправки (UTC)',
-            'Время сохранения (МСК)'
-        ])
+        cw.writerow(['ID', 'QR', 'Показания', 'Ссылка на фото', 'Время отправки (UTC)', 'Время сохранения (МСК)'])
         for row in rows:
             cw.writerow([
                 row['id'],
@@ -85,78 +76,20 @@ def update_storage_csv():
                 row['created_at'] or ''
             ])
 
-        new_csv_data = si.getvalue().encode('utf-8-sig')
+        csv_data = si.getvalue().encode('utf-8-sig')
+        filename = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        files = {'file': (filename, csv_data, 'text/csv')}
+        data = {'path': 'data/backups', 'webp': 'false'}
         headers = {'Authorization': f'Bearer {STORAGE_API_KEY}'}
 
-        # 2. Получаем список файлов в папке data
-        list_url = "https://relaxdev.ru/api/v1/storage/files?path=data"
-        list_resp = requests.get(list_url, headers=headers)
-        if list_resp.status_code != 200:
-            print("Не удалось получить список файлов")
-            return
-
-        files_list = list_resp.json().get('files', [])
-        # Ищем пути к readings.csv и readings_old.csv
-        old_path = None
-        current_path = None
-        for f in files_list:
-            if f['path'].endswith('readings_old.csv'):
-                old_path = f['path']
-            elif f['path'].endswith('readings.csv'):
-                current_path = f['path']
-
-        # 3. Если есть readings_old.csv – удаляем его
-        if old_path:
-            delete_url = f"https://relaxdev.ru/api/v1/storage/files?path={old_path}"
-            del_resp = requests.delete(delete_url, headers=headers)
-            if del_resp.status_code == 200:
-                print("Удалён старый readings_old.csv")
-            else:
-                print("Не удалось удалить readings_old.csv")
-
-        # 4. Если есть readings.csv – скачиваем его и загружаем как readings_old.csv
-        if current_path:
-            # Скачиваем текущий файл
-            download_url = f"https://cdn.relaxdev.ru/{current_path}"  # предполагаем, что URL формируется так
-            # Но лучше использовать прямой URL из списка файлов
-            old_file_url = f"https://cdn.relaxdev.ru/{current_path}"
-            old_resp = requests.get(old_file_url)
-            if old_resp.status_code == 200:
-                # Загружаем как readings_old.csv
-                files_upload = {'file': ('readings_old.csv', old_resp.content, 'text/csv')}
-                upload_data = {'path': 'data', 'webp': 'false'}
-                upload_resp = requests.post(
-                    STORAGE_UPLOAD_URL,
-                    headers=headers,
-                    files=files_upload,
-                    data=upload_data
-                )
-                if upload_resp.status_code == 200:
-                    print("Сохранена копия как readings_old.csv")
-                else:
-                    print("Не удалось загрузить readings_old.csv")
-            else:
-                print("Не удалось скачать текущий readings.csv")
-
-        # 5. Загружаем новый CSV как readings.csv
-        files_upload = {'file': ('readings.csv', new_csv_data, 'text/csv')}
-        upload_data = {'path': 'data', 'webp': 'false'}
-        upload_resp = requests.post(
-            STORAGE_UPLOAD_URL,
-            headers=headers,
-            files=files_upload,
-            data=upload_data
-        )
-
-        if upload_resp.status_code == 200:
-            print("✅ Новый readings.csv загружен")
+        response = requests.post(STORAGE_UPLOAD_URL, headers=headers, files=files, data=data)
+        if response.status_code == 200:
+            print(f"✅ Бэкап сохранён: data/backups/{filename}")
         else:
-            print(f"❌ Ошибка загрузки readings.csv: {upload_resp.status_code} - {upload_resp.text}")
-
+            print(f"❌ Ошибка бэкапа: {response.status_code} - {response.text}")
     except Exception as e:
-        print(f"❌ Исключение при обновлении CSV: {e}")
-        
-    
+        print(f"❌ Исключение при бэкапе: {e}")
+
 # ---------- ЭНДПОИНТЫ ----------
 @app.route('/upload', methods=['POST'])
 def upload():
@@ -181,7 +114,7 @@ def upload():
             files = {'file': (filename, photo_file.stream, 'image/jpeg')}
 
             if not STORAGE_API_KEY:
-                print("STORAGE_API_KEY не найден в переменных окружения!")
+                print("STORAGE_API_KEY не найден, сохраняем локально")
                 filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 photo_file.save(filepath)
                 photo_url = f"/local_photo/{filename}"
@@ -198,7 +131,7 @@ def upload():
                     data = response.json()
                     if data.get('success'):
                         photo_url = data.get('url')
-                        print(f"Фото загружено в хранилище: {photo_url}")
+                        print(f"Фото загружено: {photo_url}")
                     else:
                         print(f"Ошибка API: {data}")
                 else:
@@ -218,11 +151,11 @@ def upload():
         conn.commit()
         conn.close()
 
-        # ---- ОБНОВЛЯЕМ CSV В ХРАНИЛИЩЕ (асинхронно, чтобы не задерживать ответ) ----
+        # ---- БЭКАП В STORAGE ----
         try:
-            update_storage_csv()
+            backup_readings_to_storage()
         except Exception as e:
-            print(f"Ошибка при обновлении CSV: {e}")
+            print(f"Ошибка при бэкапе: {e}")
 
         return jsonify({
             "status": "ok",
@@ -264,14 +197,7 @@ def export_csv():
 
     si = StringIO()
     cw = csv.writer(si, delimiter=';', quoting=csv.QUOTE_ALL)
-    cw.writerow([
-        'ID записи',
-        'Счётчик (QR)',
-        'Показания',
-        'Ссылка на фото',
-        'Время отправки (UTC)',
-        'Время сохранения (МСК)'
-    ])
+    cw.writerow(['ID', 'QR', 'Показания', 'Ссылка на фото', 'Время отправки (UTC)', 'Время сохранения (МСК)'])
     for row in rows:
         cw.writerow([
             row['id'],
@@ -293,75 +219,40 @@ def export_csv():
 def get_local_photo(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-# Опционально: ручное обновление CSV (можно вызвать в браузере)
-@app.route('/refresh_csv')
-def refresh_csv():
-    update_storage_csv()
-    return "CSV обновлён"
-
-if __name__ == '__main__':
-    app.run(debug=True)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# ---- СТРАНИЦА ПРОСМОТРА ПОСЛЕДНЕГО БЭКАПА ----
 @app.route('/readings_view')
 def readings_view():
-    """
-    Отображает последний бэкап из Storage в виде HTML-таблицы.
-    """
     try:
-        # 1. Получаем список файлов в папке 'backups'
-        list_url = "https://relaxdev.ru/api/v1/storage/files?path=backups"
+        list_url = "https://relaxdev.ru/api/v1/storage/files?path=data/backups"
         headers = {'Authorization': f'Bearer {STORAGE_API_KEY}'}
         response = requests.get(list_url, headers=headers)
-        
+
         if response.status_code != 200:
-            return "Не удалось получить список файлов", 500
-        
+            return f"Ошибка получения списка файлов: {response.status_code}", 500
+
         files = response.json().get('files', [])
-        if not files:
-            return "Нет бэкапов в хранилище", 404
-        
-        # 2. Находим самый свежий файл (по lastModified)
-        latest_file = max(files, key=lambda f: f.get('lastModified', ''))
+        csv_files = [f for f in files if f['path'].endswith('.csv')]
+        if not csv_files:
+            return "Нет CSV-бэкапов в папке data/backups", 404
+
+        # Самый свежий по времени изменения
+        latest_file = max(csv_files, key=lambda f: f.get('lastModified', ''))
         file_path = latest_file['path']
-        
-        # 3. Загружаем содержимое файла
         file_url = f"https://cdn.relaxdev.ru/{file_path}"
         csv_response = requests.get(file_url)
         if csv_response.status_code != 200:
             return "Не удалось загрузить бэкап", 500
-        
+
         csv_content = csv_response.text
-        
-        # 4. Парсим CSV
         reader = csv.reader(StringIO(csv_content), delimiter=';')
         rows = list(reader)
         if not rows:
             return "Бэкап пуст", 404
-        
+
         headers_row = rows[0]
         data_rows = rows[1:]
-        
-        # 5. Формируем HTML-страницу с таблицей (без f-строк)
-        html = """
+
+        html_template = """
         <!DOCTYPE html>
         <html>
         <head>
@@ -377,12 +268,8 @@ def readings_view():
                 th { background: #2563eb; color: white; padding: 10px 12px; text-align: left; position: sticky; top: 0; }
                 td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; }
                 tr:hover { background: #f8fafc; }
-                .photo-link { color: #2563eb; text-decoration: none; }
-                .photo-link:hover { text-decoration: underline; }
-                .empty { text-align: center; color: #64748b; padding: 40px; }
                 .refresh-btn { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; }
                 .refresh-btn:hover { background: #1d4ed8; }
-                .timestamp { color: #64748b; font-size: 12px; }
                 @media (max-width: 600px) { table { font-size: 12px; } th, td { padding: 6px 8px; } }
             </style>
         </head>
@@ -395,41 +282,27 @@ def readings_view():
                 </h1>
                 <div style="overflow-x: auto;">
                     <table>
-                        <thead>
-                            <tr>
-                                {headers}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {rows}
-                        </tbody>
+                        <thead><tr>{headers}</tr></thead>
+                        <tbody>{rows}</tbody>
                     </table>
                 </div>
-                <div style="margin-top: 16px; font-size: 12px; color: #64748b;">
-                    Всего записей: {count}
-                </div>
+                <div style="margin-top: 16px; font-size: 12px; color: #64748b;">Всего записей: {count}</div>
             </div>
         </body>
         </html>
         """
-        # Формируем заголовки таблицы
         headers_html = ''.join(f'<th>{col}</th>' for col in headers_row)
-        # Формируем строки таблицы
-        rows_html = ''.join(
-            f'<tr>{"".join(f"<td>{col}</td>" for col in row)}</tr>'
-            for row in data_rows
-        )
-        # Время последнего бэкапа
+        rows_html = ''.join(f'<tr>{"".join(f"<td>{col}</td>" for col in row)}</tr>' for row in data_rows)
         last_modified = datetime.fromisoformat(latest_file['lastModified']).strftime('%d.%m.%Y %H:%M:%S')
-        count = len(data_rows)
-        
-        # Вставляем данные в HTML-шаблон
-        final_html = html.format(
+
+        return html_template.format(
             last_modified=last_modified,
             headers=headers_html,
             rows=rows_html,
-            count=count
+            count=len(data_rows)
         )
-        return final_html
     except Exception as e:
         return f"Ошибка: {e}", 500
+
+if __name__ == '__main__':
+    app.run(debug=True)
