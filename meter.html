@@ -4,10 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Счётчик</title>
-    <!-- Подключаем html5-qrcode -->
+    <!-- QR-сканер -->
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-    <!-- Tesseract для распознавания цифр -->
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         * { box-sizing: border-box; font-family: system-ui, sans-serif; margin: 0; padding: 0; }
         body { background: #f0f4f8; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 16px; }
@@ -23,75 +21,9 @@
         .btn:disabled { opacity: 0.5; pointer-events: none; }
         .video-container, .canvas-container { background: #1e293b; border-radius: 20px; overflow: hidden; position: relative; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; }
         #qr-reader { width: 100%; height: 100%; }
-        .video-wrapper {
-            position: relative;
-            width: 100%;
-            height: 100%;
-            background: #000;
-        }
-        .video-wrapper video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-        /* Рамка для выделения области */
-        .crop-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            pointer-events: none;
-            z-index: 10;
-        }
-        .crop-box {
-            width: 70%;
-            height: 40%;
-            border: 4px solid #FFD700;
-            border-radius: 16px;
-            background: rgba(255, 215, 0, 0.05);
-            box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .crop-box::before {
-            content: '';
-            position: absolute;
-            top: -2px;
-            left: -2px;
-            right: -2px;
-            bottom: -2px;
-            border-radius: 18px;
-            border: 2px dashed rgba(255, 215, 0, 0.5);
-            animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-            0% { opacity: 0.3; }
-            50% { opacity: 1; }
-            100% { opacity: 0.3; }
-        }
-        .crop-box::after {
-            content: 'Наведите сюда цифры';
-            position: absolute;
-            bottom: -32px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: #FFD700;
-            font-size: 14px;
-            font-weight: bold;
-            white-space: nowrap;
-            text-shadow: 1px 1px 4px rgba(0,0,0,0.9);
-            background: rgba(0,0,0,0.5);
-            padding: 4px 12px;
-            border-radius: 20px;
-        }
-        #canvas-preview { object-fit: contain; background: #0f172a; }
+        .video-wrapper { position: relative; width: 100%; height: 100%; background: #000; }
+        .video-wrapper video { width: 100%; height: 100%; object-fit: cover; display: block; }
+        #canvas-preview { object-fit: contain; background: #0f172a; max-width: 100%; max-height: 100%; }
         .overlay-text { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); color: white; padding: 6px 16px; border-radius: 40px; font-size: 14px; }
         .input-group { display: flex; flex-direction: column; gap: 6px; }
         .input-group label { font-weight: 500; font-size: 14px; color: #374151; }
@@ -112,15 +44,15 @@
 <div class="app">
     <h1>📟 Передача показаний</h1>
 
-    <!-- ШАГ 1: СТАРТ -->
+    <!-- Шаг 1: Старт -->
     <div id="step-start" class="step active">
         <button class="btn" id="btn-scan-qr">📷 Сканировать QR-код счётчика</button>
         <button class="btn btn-secondary" id="btn-manual">✏️ Ввести показания вручную</button>
-        <button class="btn btn-secondary" id="btn-history">📋 История отправок</button>
+        <button class="btn btn-secondary" id="btn-history">📋 Показания для отправки</button>
         <div id="pending-count"></div>
     </div>
 
-    <!-- ШАГ 2: СКАНИРОВАНИЕ QR -->
+    <!-- Шаг 2: Сканирование QR -->
     <div id="step-qr" class="step">
         <div class="video-container" id="qr-container">
             <div id="qr-reader"></div>
@@ -130,7 +62,7 @@
         <div id="qr-result">⏳ Подготовка...</div>
     </div>
 
-    <!-- ШАГ 3: РУЧНОЙ ВВОД НОМЕРА СЧЁТЧИКА -->
+    <!-- Шаг 3: Ручной ввод номера счётчика -->
     <div id="step-manual-id" class="step">
         <div class="input-group">
             <label>Введите номер счётчика (или идентификатор):</label>
@@ -140,16 +72,13 @@
         <button class="btn btn-secondary" id="btn-manual-id-cancel">Отмена</button>
     </div>
 
-    <!-- ШАГ 4: ФОТОГРАФИЯ (с рамкой) -->
+    <!-- Шаг 4: Фотографирование -->
     <div id="step-photo" class="step">
         <div class="video-container">
             <div class="video-wrapper">
                 <video id="photo-video" autoplay playsinline></video>
-                <div class="crop-overlay">
-                    <div class="crop-box"></div>
-                </div>
             </div>
-            <div class="overlay-text">Поместите цифры в рамку и нажмите 📸</div>
+            <div class="overlay-text">Наведите и нажмите «Сделать фото»</div>
         </div>
         <div class="row">
             <button class="btn" id="btn-take-photo">📸 Сделать фото</button>
@@ -158,15 +87,14 @@
         <canvas id="photo-canvas" class="hidden"></canvas>
     </div>
 
-    <!-- ШАГ 5: РАСПОЗНАВАНИЕ + РУЧНОЙ ВВОД ПОКАЗАНИЙ -->
-    <div id="step-recognize" class="step">
+    <!-- Шаг 5: Ручной ввод показаний -->
+    <div id="step-manual-read" class="step">
         <div class="canvas-container">
             <canvas id="canvas-preview"></canvas>
         </div>
-        <div class="status-box" id="ocr-status">⏳ Распознаём показания...</div>
         <div class="input-group">
-            <label>Показания (цифры):</label>
-            <input type="text" id="input-meter" inputmode="numeric" pattern="[0-9]*" placeholder="Например: 12345">
+            <label>Введите показания (цифры с дисплея):</label>
+            <input type="text" id="input-meter" inputmode="numeric" placeholder="Например: 12345">
         </div>
         <div class="row">
             <button class="btn btn-success" id="btn-submit">✅ Отправить</button>
@@ -175,7 +103,7 @@
         <div id="submit-status" style="font-size:14px; text-align:center; margin-top:8px;"></div>
     </div>
 
-    <!-- ШАГ 6: ИСТОРИЯ -->
+    <!-- Шаг 6: История -->
     <div id="step-history" class="step">
         <div id="history-list"></div>
         <button class="btn btn-secondary" id="btn-history-back">Назад</button>
@@ -186,15 +114,12 @@
     (function() {
         'use strict';
 
-        // Проверяем загрузку html5-qrcode
         if (typeof Html5Qrcode === 'undefined') {
             alert('Ошибка: библиотека html5-qrcode не загружена!');
-        } else {
-            console.log('html5-qrcode загружена');
         }
 
         const SERVER_URL = 'https://meter-readings.relaxdev.ru/upload';
-        let currentMeterData = { qr: '', photoBlob: null, photoDataURL: '', recognizedText: '', manualInput: '' };
+        let currentMeterData = { qr: '', photoBlob: null, photoDataURL: '' };
         let html5QrCode = null;
         let stream = null;
         let photoCanvas = document.getElementById('photo-canvas');
@@ -225,6 +150,7 @@
             document.getElementById(id).classList.add('active');
         }
 
+        // Камера для фото
         async function startCamera(videoElement, facingMode = 'environment') {
             try {
                 if (stream) { stream.getTracks().forEach(t => t.stop()); }
@@ -255,7 +181,7 @@
             }
         }
 
-        // ----- QR-сканер через html5-qrcode -----
+        // ----- QR-сканер (квадратная рамка) -----
         function startQrScanner() {
             if (typeof Html5Qrcode === 'undefined') {
                 document.getElementById('qr-result').textContent = '❌ Библиотека не загружена';
@@ -270,7 +196,12 @@
             }
 
             html5QrCode = new Html5Qrcode("qr-reader");
-            const config = { fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
+            // Квадратная рамка (250x250)
+            const config = {
+                fps: 15,
+                qrbox: { width: 250, height: 250 },
+                aspectRatio: 1.0
+            };
 
             document.getElementById('qr-result').textContent = '⏳ Запуск камеры...';
 
@@ -339,7 +270,7 @@
         });
         document.getElementById('btn-history-back').addEventListener('click', () => showStep('step-start'));
 
-        // ----- Фото с обрезкой по процентам -----
+        // ----- Фото -----
         async function startPhotoCamera() {
             const video = document.getElementById('photo-video');
             const ok = await startCamera(video, 'environment');
@@ -348,84 +279,39 @@
 
         document.getElementById('btn-take-photo').addEventListener('click', () => {
             const video = document.getElementById('photo-video');
-            if (!video.videoWidth || !video.videoHeight) { alert('Камера не готова'); return; }
+            if (!video.videoWidth || !video.videoHeight) {
+                alert('Камера не готова, попробуйте ещё раз.');
+                return;
+            }
 
-            // Фиксированные проценты обрезки (соответствуют рамке 70%×40%)
-            const cropLeft = 0.15;   // 15% слева
-            const cropTop = 0.30;    // 30% сверху
-            const cropWidth = 0.70;  // 70% ширины
-            const cropHeight = 0.40; // 40% высоты
+            // Захватываем весь кадр
+            photoCanvas.width = video.videoWidth;
+            photoCanvas.height = video.videoHeight;
+            const ctx = photoCanvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, photoCanvas.width, photoCanvas.height);
 
-            const cropX = cropLeft * video.videoWidth;
-            const cropY = cropTop * video.videoHeight;
-            const cropW = cropWidth * video.videoWidth;
-            const cropH = cropHeight * video.videoHeight;
-
-            // Захват всего кадра
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = video.videoWidth;
-            tempCanvas.height = video.videoHeight;
-            const ctx = tempCanvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
-
-            // Вырезаем область
-            const resultCanvas = document.createElement('canvas');
-            resultCanvas.width = cropW;
-            resultCanvas.height = cropH;
-            const resultCtx = resultCanvas.getContext('2d');
-            resultCtx.drawImage(tempCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-
-            resultCanvas.toBlob((blob) => {
+            photoCanvas.toBlob((blob) => {
+                if (!blob) {
+                    alert('Ошибка создания фото.');
+                    return;
+                }
                 currentMeterData.photoBlob = blob;
-                currentMeterData.photoDataURL = resultCanvas.toDataURL('image/jpeg', 0.92);
-                previewCanvas.width = cropW;
-                previewCanvas.height = cropH;
-                ctxPreview.clearRect(0, 0, cropW, cropH);
-                ctxPreview.drawImage(resultCanvas, 0, 0);
+                currentMeterData.photoDataURL = photoCanvas.toDataURL('image/jpeg', 0.92);
+                previewCanvas.width = photoCanvas.width;
+                previewCanvas.height = photoCanvas.height;
+                ctxPreview.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+                ctxPreview.drawImage(photoCanvas, 0, 0);
                 stopCamera();
-                showStep('step-recognize');
-                recognizeMeter(blob);
+                showStep('step-manual-read');
+                document.getElementById('input-meter').value = '';
+                document.getElementById('submit-status').textContent = '';
+                document.getElementById('btn-submit').disabled = false;
             }, 'image/jpeg', 0.92);
         });
 
         document.getElementById('btn-photo-cancel').addEventListener('click', () => {
             stopCamera();
             showStep('step-start');
-        });
-
-        // ----- Распознавание -----
-        async function recognizeMeter(blob) {
-            const statusEl = document.getElementById('ocr-status');
-            statusEl.textContent = '⏳ Распознаём цифры...';
-            statusEl.className = 'status-box';
-            document.getElementById('input-meter').value = '';
-            document.getElementById('submit-status').textContent = '';
-            document.getElementById('btn-submit').disabled = true;
-            try {
-                const result = await Tesseract.recognize(blob, 'eng', {
-                    tessedit_char_whitelist: '0123456789',
-                    tessedit_pageseg_mode: 6
-                });
-                const text = result.data.text.replace(/[^0-9]/g, '').trim();
-                currentMeterData.recognizedText = text;
-                if (text.length > 0) {
-                    document.getElementById('input-meter').value = text;
-                    statusEl.textContent = '✅ Распознано: ' + text;
-                    statusEl.className = 'status-box success';
-                } else {
-                    statusEl.textContent = '⚠️ Не удалось распознать цифры. Введите вручную.';
-                    statusEl.className = 'status-box error';
-                }
-            } catch (e) {
-                statusEl.textContent = '❌ Ошибка распознавания. Введите вручную.';
-                statusEl.className = 'status-box error';
-            }
-            document.getElementById('btn-submit').disabled = false;
-        }
-
-        document.getElementById('input-meter').addEventListener('input', function() {
-            this.value = this.value.replace(/[^0-9,.]/g, '');
-            currentMeterData.manualInput = this.value;
         });
 
         document.getElementById('btn-retry-photo').addEventListener('click', () => {
@@ -437,7 +323,10 @@
         document.getElementById('btn-submit').addEventListener('click', async () => {
             const input = document.getElementById('input-meter');
             const value = input.value.trim();
-            if (!value) { document.getElementById('submit-status').textContent = '❌ Введите показания!'; return; }
+            if (!value) {
+                document.getElementById('submit-status').textContent = '❌ Введите показания!';
+                return;
+            }
             const submitStatus = document.getElementById('submit-status');
             submitStatus.textContent = '⏳ Отправка...';
             document.getElementById('btn-submit').disabled = true;
