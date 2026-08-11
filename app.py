@@ -16,7 +16,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 МБ
 
 # ---------- База данных ----------
 def get_db():
-    db_path = os.path.join(os.path.dirname(__file__), 'meter_data.db')
+    db_path = '/data/meter_data.db'
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
