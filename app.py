@@ -1,10 +1,12 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import os
 import sqlite3
 from datetime import datetime
 
 app = Flask(__name__)
+CORS(app)
 
 # Настройка папки для загрузки
 UPLOAD_FOLDER = '/tmp/uploads'
