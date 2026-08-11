@@ -231,7 +231,7 @@ def readings_view():
         if csv_response.status_code != 200:
             return "Не удалось загрузить бэкап", 500
         
-        csv_content = csv_response.text
+        csv_content = csv_response.content.decode('utf-8-sig')
         reader = csv.reader(StringIO(csv_content), delimiter=';')
         rows = list(reader)
         if not rows:
