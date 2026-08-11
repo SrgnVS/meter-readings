@@ -243,55 +243,34 @@ def get_local_photo(filename):
 @app.route('/readings_view')
 def readings_view():
     try:
+        # 1. Проверяем API-ключ
+        if not STORAGE_API_KEY:
+            return "Ошибка: STORAGE_API_KEY не задан", 500
+
+        # 2. Получаем список файлов
         list_url = "https://relaxdev.ru/api/v1/storage/files?path=data/backups"
         headers = {'Authorization': f'Bearer {STORAGE_API_KEY}'}
         response = requests.get(list_url, headers=headers)
         
-        if response.status_code != 200:
-            return f"Ошибка получения списка: {response.status_code}", 500
+        # 3. Выводим подробный отчёт
+        html = f"""
+        <h2>Отладка /readings_view</h2>
+        <p><b>API-ключ:</b> {'присутствует' if STORAGE_API_KEY else 'ОТСУТСТВУЕТ'}</p>
+        <p><b>Статус ответа от Storage API:</b> {response.status_code}</p>
+        <p><b>Ответ от Storage API:</b> {response.text}</p>
+        """
         
-        files = response.json().get('files', [])
-        csv_files = [f for f in files if f['path'].endswith('.csv')]
-        if not csv_files:
-            return "Нет CSV-бэкапов в папке data/backups", 404
-        
-        latest_file = max(csv_files, key=lambda f: f.get('lastModified', ''))
-        file_path = latest_file['path']
-        
-        file_url = f"https://cdn.relaxdev.ru/{file_path}"
-        csv_response = requests.get(file_url)
-        if csv_response.status_code != 200:
-            return "Не удалось загрузить бэкап", 500
-        
-        csv_content = csv_response.content.decode('utf-8-sig')
-        reader = csv.reader(StringIO(csv_content), delimiter=';')
-        rows = list(reader)
-        if not rows:
-            return "Бэкап пуст", 404
-        
-        headers_row = rows[0]
-        data_rows = rows[1:]
-        
-        # Генерируем HTML-таблицу
-        html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1'><title>Показания счётчиков</title>"
-        html += "<style>body{font-family:system-ui,-apple-system,sans-serif;background:#f0f4f8;padding:20px;margin:0}.container{max-width:1200px;margin:0 auto;background:#fff;padding:20px;border-radius:16px;box-shadow:0 4px 20px rgba(0,0,0,.1)}h1{font-size:24px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}.badge{font-size:14px;font-weight:400;color:#64748b}table{width:100%;border-collapse:collapse;font-size:14px}th{background:#2563eb;color:#fff;padding:10px 12px;text-align:left;position:sticky;top:0}td{padding:8px 12px;border-bottom:1px solid #e5e7eb}tr:hover{background:#f8fafc}.refresh-btn{background:#2563eb;color:#fff;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:14px}.refresh-btn:hover{background:#1d4ed8}@media(max-width:600px){table{font-size:12px}th,td{padding:6px 8px}}</style>"
-        html += "</head><body><div class='container'><h1><span>📊 Показания счётчиков</span><span class='badge'>Последний бэкап: " + datetime.fromisoformat(latest_file['lastModified']).strftime('%d.%m.%Y %H:%M:%S') + "</span><button class='refresh-btn' onclick='location.reload()'>🔄 Обновить</button></h1><div style='overflow-x:auto;'><table><thead><tr>"
-        
-        for col in headers_row:
-            html += f"<th>{col}</th>"
-        html += "</tr></thead><tbody>"
-        
-        for row in data_rows:
-            html += "<tr>"
-            for col in row:
-                html += f"<td>{col}</td>"
-            html += "</tr>"
-        
-        html += f"</tbody></table></div><div style='margin-top:16px;font-size:12px;color:#64748b;'>Всего записей: {len(data_rows)}</div></div></body></html>"
+        if response.status_code == 200:
+            files = response.json().get('files', [])
+            html += f"<p><b>Найдено файлов:</b> {len(files)}</p>"
+            for f in files:
+                html += f"<p>📄 {f['path']} (modified: {f.get('lastModified', '')})</p>"
+        else:
+            html += f"<p>❌ Ошибка: {response.status_code}</p>"
         
         return html
     except Exception as e:
-        return f"Ошибка: {e}", 500
+        return f"❌ Исключение: {e}", 500
 
 if __name__ == '__main__':
     app.run(debug=True)
