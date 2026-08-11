@@ -47,7 +47,6 @@ init_db()
 
 # ---------- ФУНКЦИЯ БЭКАПА В STORAGE ----------
 def backup_readings_to_storage():
-    """Сохраняет текущие показания в папку data/backups с уникальным именем"""
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -61,31 +60,64 @@ def backup_readings_to_storage():
 
         si = StringIO()
         cw = csv.writer(si, delimiter=';', quoting=csv.QUOTE_ALL)
-        cw.writerow(['ID', 'QR', 'Показания', 'Ссылка на фото', 'Время отправки (UTC)', 'Время сохранения (МСК)'])
+        cw.writerow([
+            'ID',
+            'Счётчик (QR)',
+            'Показания',
+            'Ссылка на фото',
+            'Время отправки (МСК)',
+            'Время сохранения (МСК)'
+        ])
+
+        moscow_tz = timezone(timedelta(hours=3))
+
         for row in rows:
+            # Преобразуем timestamp из UTC в МСК
+            ts_str = row['timestamp'] or ''
+            if ts_str:
+                try:
+                    dt_utc = datetime.fromisoformat(ts_str.replace('Z', '+00:00'))
+                    dt_moscow = dt_utc.astimezone(moscow_tz)
+                    ts_formatted = dt_moscow.strftime('%d.%m.%y %H:%M')
+                except:
+                    ts_formatted = ts_str
+            else:
+                ts_formatted = ''
+
+            # Преобразуем created_at (уже МСК) в тот же формат
+            created_str = row['created_at'] or ''
+            if created_str:
+                try:
+                    dt = datetime.strptime(created_str, '%Y-%m-%d %H:%M:%S')
+                    created_formatted = dt.strftime('%d.%m.%y %H:%M')
+                except:
+                    created_formatted = created_str
+            else:
+                created_formatted = ''
+
             cw.writerow([
                 row['id'],
                 row['qr'] or '',
                 row['meter_reading'] or '',
                 row['photo_filename'] or '',
-                row['timestamp'] or '',
-                row['created_at'] or ''
+                ts_formatted,
+                created_formatted
             ])
 
         csv_data = si.getvalue().encode('utf-8-sig')
         filename = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        
         files = {'file': (filename, csv_data, 'text/csv')}
         data = {'path': 'data/backups', 'webp': 'false'}
         headers = {'Authorization': f'Bearer {STORAGE_API_KEY}'}
         response = requests.post(STORAGE_UPLOAD_URL, headers=headers, files=files, data=data)
-        
+
         if response.status_code == 200:
             print(f"✅ Бэкап сохранён: data/backups/{filename}")
         else:
-            print(f"❌ Ошибка бэкапа: {response.status_code} - {response.text}")
+            print(f"❌ Ошибка: {response.status_code} - {response.text}")
     except Exception as e:
-        print(f"❌ Исключение при бэкапе: {e}")
+        print(f"❌ Исключение: {e}")
+
 
 # ---------- ЭНДПОИНТЫ ----------
 @app.route('/upload', methods=['POST'])
