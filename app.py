@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file, send_from_directory
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import os
@@ -15,13 +15,9 @@ CORS(app)
 UPLOAD_FOLDER = '/tmp/uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
-# Получаем ключ доступа к Storage API
 STORAGE_API_KEY = os.environ.get('STORAGE_API_KEY')
-# Если ключ не найден, можно прописать явно (только для теста):
-# STORAGE_API_KEY = "sk_rd_ваш_ключ"
-
 STORAGE_UPLOAD_URL = "https://relaxdev.ru/api/v1/storage/upload"
 
 # ---------- БАЗА ДАННЫХ ----------
@@ -51,7 +47,7 @@ init_db()
 
 # ---------- ФУНКЦИЯ БЭКАПА В STORAGE ----------
 def backup_readings_to_storage():
-    """Сохраняет текущие показания в папку data/backups с уникальным именем (с датой)"""
+    """Сохраняет текущие показания в папку data/backups с уникальным именем"""
     try:
         conn = get_db()
         cursor = conn.cursor()
@@ -78,11 +74,12 @@ def backup_readings_to_storage():
 
         csv_data = si.getvalue().encode('utf-8-sig')
         filename = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        
         files = {'file': (filename, csv_data, 'text/csv')}
         data = {'path': 'data/backups', 'webp': 'false'}
         headers = {'Authorization': f'Bearer {STORAGE_API_KEY}'}
-
         response = requests.post(STORAGE_UPLOAD_URL, headers=headers, files=files, data=data)
+        
         if response.status_code == 200:
             print(f"✅ Бэкап сохранён: data/backups/{filename}")
         else:
@@ -108,25 +105,16 @@ def upload():
         base_filename = f"{qr_clean}_{moscow_now}"
 
         photo_url = None
-
         if photo_file and photo_file.filename != '':
             filename = secure_filename(f"{base_filename}.jpg")
             files = {'file': (filename, photo_file.stream, 'image/jpeg')}
-
             if not STORAGE_API_KEY:
-                print("STORAGE_API_KEY не найден, сохраняем локально")
                 filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 photo_file.save(filepath)
                 photo_url = f"/local_photo/{filename}"
             else:
                 headers = {'Authorization': f'Bearer {STORAGE_API_KEY}'}
-                response = requests.post(
-                    STORAGE_UPLOAD_URL,
-                    headers=headers,
-                    files=files,
-                    data={'webp': 'false'}
-                )
-
+                response = requests.post(STORAGE_UPLOAD_URL, headers=headers, files=files, data={'webp': 'false'})
                 if response.status_code == 200:
                     data = response.json()
                     if data.get('success'):
@@ -140,7 +128,7 @@ def upload():
                     photo_file.save(filepath)
                     photo_url = f"/local_photo/{filename}"
 
-        # Сохраняем запись в БД
+        # Сохраняем в БД
         moscow_now_db = datetime.now(moscow_tz).strftime("%Y-%m-%d %H:%M:%S")
         conn = get_db()
         cursor = conn.cursor()
@@ -219,39 +207,39 @@ def export_csv():
 def get_local_photo(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-# ---- СТРАНИЦА ПРОСМОТРА ПОСЛЕДНЕГО БЭКАПА ----
+# ---------- СТРАНИЦА ДЛЯ ПРОСМОТРА ПОСЛЕДНЕГО БЭКАПА ----------
 @app.route('/readings_view')
 def readings_view():
     try:
         list_url = "https://relaxdev.ru/api/v1/storage/files?path=data/backups"
         headers = {'Authorization': f'Bearer {STORAGE_API_KEY}'}
         response = requests.get(list_url, headers=headers)
-
+        
         if response.status_code != 200:
-            return f"Ошибка получения списка файлов: {response.status_code}", 500
-
+            return f"Ошибка получения списка: {response.status_code}", 500
+        
         files = response.json().get('files', [])
         csv_files = [f for f in files if f['path'].endswith('.csv')]
         if not csv_files:
             return "Нет CSV-бэкапов в папке data/backups", 404
-
-        # Самый свежий по времени изменения
+        
         latest_file = max(csv_files, key=lambda f: f.get('lastModified', ''))
         file_path = latest_file['path']
+        
         file_url = f"https://cdn.relaxdev.ru/{file_path}"
         csv_response = requests.get(file_url)
         if csv_response.status_code != 200:
             return "Не удалось загрузить бэкап", 500
-
+        
         csv_content = csv_response.text
         reader = csv.reader(StringIO(csv_content), delimiter=';')
         rows = list(reader)
         if not rows:
             return "Бэкап пуст", 404
-
+        
         headers_row = rows[0]
         data_rows = rows[1:]
-
+        
         html_template = """
         <!DOCTYPE html>
         <html>
@@ -294,7 +282,7 @@ def readings_view():
         headers_html = ''.join(f'<th>{col}</th>' for col in headers_row)
         rows_html = ''.join(f'<tr>{"".join(f"<td>{col}</td>" for col in row)}</tr>' for row in data_rows)
         last_modified = datetime.fromisoformat(latest_file['lastModified']).strftime('%d.%m.%Y %H:%M:%S')
-
+        
         return html_template.format(
             last_modified=last_modified,
             headers=headers_html,
