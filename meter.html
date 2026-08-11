@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Счётчик</title>
-    <!-- Подключаем библиотеки -->
+    <title>Показания счётчиков</title>
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
@@ -170,6 +169,13 @@
             color: #64748b;
             text-align: center;
         }
+        .input-row {
+            display: flex;
+            gap: 10px;
+        }
+        .input-row .input-group {
+            flex: 1;
+        }
     </style>
 </head>
 <body>
@@ -215,9 +221,16 @@
             <canvas id="canvas-preview"></canvas>
         </div>
         <div class="status-box" id="ocr-status">⏳ Распознаём показания...</div>
+        
+        <!-- Поле для ввода номера счётчика (если ручной ввод) -->
+        <div class="input-group" id="qr-input-group">
+            <label>Номер счётчика (QR или вручную):</label>
+            <input type="text" id="input-qr" placeholder="Например: METER-001">
+        </div>
+        
         <div class="input-group">
             <label>Показания (цифры):</label>
-            <input type="text" id="input-meter" inputmode="numeric" pattern="[0-9]*" placeholder="Например: 1234,56">
+            <input type="text" id="input-meter" inputmode="decimal" placeholder="Например: 1234,56">
         </div>
         <div class="row">
             <button class="btn btn-success" id="btn-submit">✅ Отправить</button>
@@ -239,13 +252,11 @@
     (function() {
         'use strict';
 
-        // ---------- НАСТРОЙКИ ----------
         const SERVER_URL = 'https://meter-readings.relaxdev.ru/upload';
-        // ---------- СОСТОЯНИЕ ПРИЛОЖЕНИЯ ----------
         let currentMeterData = {
             qr: '',
-            photoBlob: null,   // для отправки
-            photoDataURL: '',  // для превью
+            photoBlob: null,
+            photoDataURL: '',
             recognizedText: '',
             manualInput: '',
         };
@@ -257,7 +268,6 @@
         let previewCanvas = document.getElementById('canvas-preview');
         let ctxPreview = previewCanvas.getContext('2d');
 
-        // Очередь неотправленных (храним в localStorage)
         function getQueue() {
             try {
                 return JSON.parse(localStorage.getItem('meterQueue')) || [];
@@ -276,20 +286,18 @@
             const q = getQueue();
             const el = document.getElementById('pending-count');
             if (q.length > 0) {
-                el.textContent = `⏳ Ожидает отправки: ${q.length} записей`;
+                el.textContent = '⏳ Ожидает отправки: ' + q.length + ' записей';
             } else {
                 el.textContent = '';
             }
         }
         updatePendingCount();
 
-        // ---------- ПЕРЕКЛЮЧЕНИЕ ШАГОВ ----------
         function showStep(stepId) {
             document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
             document.getElementById(stepId).classList.add('active');
         }
 
-        // ---------- КАМЕРА ОБЩАЯ ----------
         async function startCamera(videoElement, facingMode = 'environment') {
             try {
                 if (stream) {
@@ -321,7 +329,7 @@
             });
         }
 
-        // ---------- ШАГ 1: СТАРТ ----------
+        // Шаг 1: Старт
         document.getElementById('btn-scan-qr').addEventListener('click', async () => {
             showStep('step-qr');
             const video = document.getElementById('qr-video');
@@ -335,10 +343,14 @@
         });
 
         document.getElementById('btn-manual').addEventListener('click', () => {
-            currentMeterData.qr = 'ручной ввод';
+            // Показываем поле для ввода номера счётчика
+            document.getElementById('qr-input-group').style.display = 'flex';
+            document.getElementById('input-qr').value = '';
+            document.getElementById('input-qr').focus();
+            // Очищаем фото
+            currentMeterData.qr = '';
             currentMeterData.photoBlob = null;
             currentMeterData.photoDataURL = '';
-            // Показываем шаг распознавания с пустым полем
             previewCanvas.width = 1; previewCanvas.height = 1;
             ctxPreview.clearRect(0,0,1,1);
             document.getElementById('ocr-status').textContent = '✏️ Введите показания вручную';
@@ -358,7 +370,7 @@
             showStep('step-start');
         });
 
-        // ---------- ШАГ 2: СКАНИРОВАНИЕ QR ----------
+        // Шаг 2: QR сканирование
         let qrScanInterval = null;
 
         function scanQR(video) {
@@ -373,14 +385,15 @@
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                 const code = jsQR(imageData.data, imageData.width, imageData.height, {
-				    inversionAttempts: "attemptBoth",
-				});
+                    inversionAttempts: "attemptBoth", // Пытаемся оба варианта
+                });
                 if (code && code.data) {
                     qrScannerActive = false;
                     clearInterval(qrScanInterval);
                     document.getElementById('qr-result').textContent = '✅ QR найден: ' + code.data;
                     currentMeterData.qr = code.data;
-                    // Переходим к фото
+                    // Скрываем поле для ручного ввода
+                    document.getElementById('qr-input-group').style.display = 'none';
                     stopCamera();
                     showStep('step-photo');
                     startPhotoCamera();
@@ -395,7 +408,7 @@
             showStep('step-start');
         });
 
-        // ---------- ШАГ 3: ФОТОГРАФИЯ ----------
+        // Шаг 3: Фото
         async function startPhotoCamera() {
             const video = document.getElementById('photo-video');
             const ok = await startCamera(video, 'environment');
@@ -411,22 +424,24 @@
                 alert('Камера не готова');
                 return;
             }
-            // Снимаем кадр
             photoCanvas.width = video.videoWidth;
             photoCanvas.height = video.videoHeight;
             const ctx = photoCanvas.getContext('2d');
             ctx.drawImage(video, 0, 0, photoCanvas.width, photoCanvas.height);
-            // Сохраняем как Blob для отправки
             photoCanvas.toBlob((blob) => {
                 currentMeterData.photoBlob = blob;
                 currentMeterData.photoDataURL = photoCanvas.toDataURL('image/jpeg', 0.92);
-                // Показываем превью
                 previewCanvas.width = photoCanvas.width;
                 previewCanvas.height = photoCanvas.height;
                 ctxPreview.drawImage(photoCanvas, 0, 0);
-                // Переходим к распознаванию
                 stopCamera();
                 showStep('step-recognize');
+                // Если QR уже был считан, скрываем поле для ручного ввода
+                if (currentMeterData.qr) {
+                    document.getElementById('qr-input-group').style.display = 'none';
+                } else {
+                    document.getElementById('qr-input-group').style.display = 'flex';
+                }
                 recognizeMeter(blob);
             }, 'image/jpeg', 0.92);
         });
@@ -436,7 +451,7 @@
             showStep('step-start');
         });
 
-        // ---------- ШАГ 4: РАСПОЗНАВАНИЕ ----------
+        // Шаг 4: Распознавание
         async function recognizeMeter(blob) {
             const statusEl = document.getElementById('ocr-status');
             statusEl.textContent = '⏳ Распознаём цифры...';
@@ -446,13 +461,12 @@
             document.getElementById('btn-submit').disabled = true;
 
             try {
-                // Используем Tesseract.js с ограничением на цифры
                 const result = await Tesseract.recognize(
                     blob,
-                    'eng', // можно 'rus' для русского, но для цифр eng точнее
+                    'eng',
                     {
                         tessedit_char_whitelist: '0123456789',
-                        // Убираем всё, кроме цифр
+                        tessedit_pageseg_mode: 6,
                     }
                 );
                 const text = result.data.text.replace(/[^0-9]/g, '').trim();
@@ -474,45 +488,51 @@
             document.getElementById('btn-submit').disabled = false;
         }
 
-        // Ручное изменение поля — запоминаем
-		document.getElementById('input-meter').addEventListener('input', function() {
-			// Оставляем только цифры, запятую и точку
-			let val = this.value.replace(/[^0-9,.]/g, '');
-			// Убираем лишние запятые и точки (оставляем только первую)
-			const parts = val.split(/[,.]/);
-			if (parts.length > 2) {
-				val = parts[0] + ',' + parts.slice(1).join('');
-			}
-			this.value = val;
-			currentMeterData.manualInput = this.value;
-		});
+        // Обработка ввода показаний (разрешаем запятую/точку)
+        document.getElementById('input-meter').addEventListener('input', function() {
+            this.value = this.value.replace(/[^0-9,.]/g, '');
+            currentMeterData.manualInput = this.value;
+        });
 
-        // Переснять
+        // Обработка ввода номера счётчика
+        document.getElementById('input-qr').addEventListener('input', function() {
+            currentMeterData.qr = this.value.trim();
+        });
+
         document.getElementById('btn-retry-photo').addEventListener('click', () => {
             showStep('step-photo');
             startPhotoCamera();
         });
 
-        // ---------- ОТПРАВКА ----------
+        // Отправка
         document.getElementById('btn-submit').addEventListener('click', async () => {
             const input = document.getElementById('input-meter');
-            const value = input.value.replace(/[^0-9]/g, '');
+            const value = input.value.replace(/[^0-9,.]/g, '');
             if (!value) {
                 document.getElementById('submit-status').textContent = '❌ Введите показания!';
                 return;
             }
+            // Проверяем, что QR заполнен
+            let qr = currentMeterData.qr;
+            if (!qr) {
+                qr = document.getElementById('input-qr').value.trim();
+                if (!qr) {
+                    document.getElementById('submit-status').textContent = '❌ Введите номер счётчика!';
+                    return;
+                }
+                currentMeterData.qr = qr;
+            }
+
             const submitStatus = document.getElementById('submit-status');
             submitStatus.textContent = '⏳ Отправка...';
             document.getElementById('btn-submit').disabled = true;
 
-            // Формируем данные
             const formData = new FormData();
-            formData.append('qr', currentMeterData.qr || '');
+            formData.append('qr', qr);
             formData.append('meter_reading', value);
             if (currentMeterData.photoBlob) {
                 formData.append('photo', currentMeterData.photoBlob, 'meter.jpg');
             }
-            // Дополнительно можно добавить время
             formData.append('timestamp', new Date().toISOString());
 
             try {
@@ -521,7 +541,8 @@
                     body: formData,
                 });
                 if (response.ok) {
-                    submitStatus.textContent = '✅ Отправлено успешно!';
+                    const result = await response.json();
+                    submitStatus.textContent = '✅ Отправлено успешно! ID: ' + result.id;
                     submitStatus.className = 'status-box success';
                     // Очищаем данные
                     currentMeterData.photoBlob = null;
@@ -538,18 +559,16 @@
                 }
             } catch (e) {
                 console.warn('Ошибка отправки, сохраняем в очередь:', e);
-                // Сохраняем в локальную очередь
                 const queueItem = {
-                    qr: currentMeterData.qr || '',
+                    qr: qr,
                     meter_reading: value,
-                    photoDataURL: currentMeterData.photoDataURL, // храним base64
+                    photoDataURL: currentMeterData.photoDataURL,
                     timestamp: new Date().toISOString(),
                 };
                 addToQueue(queueItem);
                 submitStatus.textContent = '⚠️ Сервер недоступен. Данные сохранены в очередь.';
                 submitStatus.className = 'status-box error';
                 document.getElementById('btn-submit').disabled = false;
-                // Возврат на старт через 3 сек
                 setTimeout(() => {
                     showStep('step-start');
                     document.getElementById('btn-submit').disabled = false;
@@ -558,7 +577,7 @@
             }
         });
 
-        // ---------- ИСТОРИЯ И ОЧЕРЕДЬ ----------
+        // История
         function renderHistory() {
             const list = document.getElementById('history-list');
             const queue = getQueue();
@@ -582,14 +601,12 @@
             });
             list.innerHTML = html;
 
-            // Обработчики для кнопок в истории
             list.querySelectorAll('[data-idx]').forEach(btn => {
                 btn.addEventListener('click', function() {
                     const idx = parseInt(this.dataset.idx);
                     const queue = getQueue();
                     if (idx >= queue.length) return;
                     if (this.textContent.includes('Отправить')) {
-                        // Попытка отправить этот элемент
                         sendFromQueue(idx);
                     } else if (this.textContent.includes('Удалить')) {
                         queue.splice(idx, 1);
@@ -604,12 +621,10 @@
             const queue = getQueue();
             if (idx >= queue.length) return;
             const item = queue[idx];
-            // Пытаемся отправить
             const formData = new FormData();
             formData.append('qr', item.qr || '');
             formData.append('meter_reading', item.meter_reading);
             if (item.photoDataURL) {
-                // Конвертируем base64 в Blob
                 const response = await fetch(item.photoDataURL);
                 const blob = await response.blob();
                 formData.append('photo', blob, 'meter.jpg');
@@ -619,7 +634,6 @@
             try {
                 const res = await fetch(SERVER_URL, { method: 'POST', body: formData });
                 if (res.ok) {
-                    // Удаляем из очереди
                     queue.splice(idx, 1);
                     setQueue(queue);
                     renderHistory();
@@ -632,9 +646,8 @@
             }
         }
 
-        // ---------- ДОПОЛНИТЕЛЬНО: попытка отправки очереди при загрузке ----------
+        // При загрузке
         window.addEventListener('load', () => {
-            // Если есть очередь, предложим отправить
             const q = getQueue();
             if (q.length > 0) {
                 if (confirm(`Есть ${q.length} неотправленных записей. Отправить сейчас?`)) {
@@ -642,10 +655,11 @@
                     showStep('step-history');
                 }
             }
+            // Скрываем поле для ручного ввода QR по умолчанию
+            document.getElementById('qr-input-group').style.display = 'none';
         });
 
-        // Предотвращаем закрытие при случайном обновлении (не критично)
-        console.log('Приложение загружено. Ждём действий.');
+        console.log('Приложение загружено.');
     })();
 </script>
 </body>
