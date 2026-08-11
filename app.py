@@ -321,14 +321,6 @@ if __name__ == '__main__':
 
 
 
-import csv
-from io import StringIO
-import requests
-from datetime import datetime
-import os
-
-# ... (ваш существующий код) ...
-
 @app.route('/readings_view')
 def readings_view():
     """
@@ -368,8 +360,8 @@ def readings_view():
         headers_row = rows[0]
         data_rows = rows[1:]
         
-        # 5. Формируем HTML-страницу с таблицей
-        html = f"""
+        # 5. Формируем HTML-страницу с таблицей (без f-строк)
+        html = """
         <!DOCTYPE html>
         <html>
         <head>
@@ -377,110 +369,67 @@ def readings_view():
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <title>Показания счётчиков</title>
             <style>
-                body {{
-                    font-family: system-ui, sans-serif;
-                    background: #f0f4f8;
-                    padding: 20px;
-                }}
-                .container {{
-                    max-width: 1200px;
-                    margin: 0 auto;
-                    background: white;
-                    padding: 20px;
-                    border-radius: 16px;
-                    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-                }}
-                h1 {{
-                    font-size: 24px;
-                    margin-bottom: 16px;
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                }}
-                .badge {{
-                    font-size: 14px;
-                    font-weight: normal;
-                    color: #64748b;
-                }}
-                table {{
-                    width: 100%;
-                    border-collapse: collapse;
-                    font-size: 14px;
-                }}
-                th {{
-                    background: #2563eb;
-                    color: white;
-                    padding: 10px 12px;
-                    text-align: left;
-                    position: sticky;
-                    top: 0;
-                }}
-                td {{
-                    padding: 8px 12px;
-                    border-bottom: 1px solid #e5e7eb;
-                }}
-                tr:hover {{
-                    background: #f8fafc;
-                }}
-                .photo-link {{
-                    color: #2563eb;
-                    text-decoration: none;
-                }}
-                .photo-link:hover {{
-                    text-decoration: underline;
-                }}
-                .empty {{
-                    text-align: center;
-                    color: #64748b;
-                    padding: 40px;
-                }}
-                .refresh-btn {{
-                    background: #2563eb;
-                    color: white;
-                    border: none;
-                    padding: 8px 16px;
-                    border-radius: 8px;
-                    cursor: pointer;
-                    font-size: 14px;
-                }}
-                .refresh-btn:hover {{
-                    background: #1d4ed8;
-                }}
-                .timestamp {{
-                    color: #64748b;
-                    font-size: 12px;
-                }}
+                body { font-family: system-ui, sans-serif; background: #f0f4f8; padding: 20px; }
+                .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+                h1 { font-size: 24px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+                .badge { font-size: 14px; font-weight: normal; color: #64748b; }
+                table { width: 100%; border-collapse: collapse; font-size: 14px; }
+                th { background: #2563eb; color: white; padding: 10px 12px; text-align: left; position: sticky; top: 0; }
+                td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; }
+                tr:hover { background: #f8fafc; }
+                .photo-link { color: #2563eb; text-decoration: none; }
+                .photo-link:hover { text-decoration: underline; }
+                .empty { text-align: center; color: #64748b; padding: 40px; }
+                .refresh-btn { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+                .refresh-btn:hover { background: #1d4ed8; }
+                .timestamp { color: #64748b; font-size: 12px; }
+                @media (max-width: 600px) { table { font-size: 12px; } th, td { padding: 6px 8px; } }
             </style>
         </head>
         <body>
             <div class="container">
                 <h1>
-                    📊 Показания счётчиков
-                    <span class="badge">Последний бэкап: {datetime.fromisoformat(latest_file['lastModified']).strftime('%d.%m.%Y %H:%M:%S')}</span>
+                    <span>📊 Показания счётчиков</span>
+                    <span class="badge">Последний бэкап: {last_modified}</span>
                     <button class="refresh-btn" onclick="location.reload()">🔄 Обновить</button>
                 </h1>
                 <div style="overflow-x: auto;">
                     <table>
                         <thead>
                             <tr>
-                                {''.join(f'<th>{col}</th>' for col in headers_row)}
+                                {headers}
                             </tr>
                         </thead>
                         <tbody>
-                            {''.join(
-                                f'<tr>{''.join(f'<td>{col}</td>' for col in row)}</tr>'
-                                for row in data_rows
-                            )}
+                            {rows}
                         </tbody>
                     </table>
                 </div>
                 <div style="margin-top: 16px; font-size: 12px; color: #64748b;">
-                    Всего записей: {len(data_rows)}
+                    Всего записей: {count}
                 </div>
             </div>
         </body>
         </html>
         """
-        return html
+        # Формируем заголовки таблицы
+        headers_html = ''.join(f'<th>{col}</th>' for col in headers_row)
+        # Формируем строки таблицы
+        rows_html = ''.join(
+            f'<tr>{"".join(f"<td>{col}</td>" for col in row)}</tr>'
+            for row in data_rows
+        )
+        # Время последнего бэкапа
+        last_modified = datetime.fromisoformat(latest_file['lastModified']).strftime('%d.%m.%Y %H:%M:%S')
+        count = len(data_rows)
+        
+        # Вставляем данные в HTML-шаблон
+        final_html = html.format(
+            last_modified=last_modified,
+            headers=headers_html,
+            rows=rows_html,
+            count=count
+        )
+        return final_html
     except Exception as e:
         return f"Ошибка: {e}", 500
