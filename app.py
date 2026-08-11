@@ -240,40 +240,37 @@ def readings_view():
         response = requests.get(list_url, headers=headers)
         if response.status_code != 200:
             return f"Ошибка получения списка: {response.status_code}", 500
-        
+
         data = response.json()
         if not data.get('success'):
             return "API вернул ошибку", 500
-        
+
         files = data.get('files', [])
         if not files:
             return "Нет бэкапов в папке data/backups", 404
-        
-        # Сортируем по lastModified (самый свежий последний)
+
         files_sorted = sorted(files, key=lambda f: f.get('lastModified', ''), reverse=True)
         latest_file = files_sorted[0]
         file_path = latest_file['path']
-        
-        # Формируем URL для скачивания файла
-        # Путь в ответе начинается с /, но добавим слеш на всякий случай
+
         if file_path.startswith('/'):
             file_url = f"https://cdn.relaxdev.ru{file_path}"
         else:
             file_url = f"https://cdn.relaxdev.ru/{file_path}"
-        
+
         csv_response = requests.get(file_url)
         if csv_response.status_code != 200:
             return f"Не удалось загрузить бэкап: {csv_response.status_code}", 500
-        
+
         csv_content = csv_response.text
         reader = csv.reader(StringIO(csv_content), delimiter=';')
         rows = list(reader)
         if not rows:
             return "Бэкап пуст", 404
-        
+
         headers_row = rows[0]
         data_rows = rows[1:]
-        
+
         html_template = """
         <!DOCTYPE html>
         <html>
@@ -316,7 +313,7 @@ def readings_view():
         headers_html = ''.join(f'<th>{col}</th>' for col in headers_row)
         rows_html = ''.join(f'<tr>{"".join(f"<td>{col}</td>" for col in row)}</tr>' for row in data_rows)
         last_modified = datetime.fromisoformat(latest_file['lastModified']).strftime('%d.%m.%Y %H:%M:%S')
-        
+
         return html_template.format(
             last_modified=last_modified,
             headers=headers_html,
