@@ -330,7 +330,7 @@
             const submitStatus = document.getElementById('submit-status');
             submitStatus.textContent = '⏳ Отправка...';
             document.getElementById('btn-submit').disabled = true;
-
+        
             const formData = new FormData();
             formData.append('qr', currentMeterData.qr || '');
             formData.append('meter_reading', value);
@@ -338,7 +338,7 @@
                 formData.append('photo', currentMeterData.photoBlob, 'meter.jpg');
             }
             formData.append('timestamp', new Date().toISOString());
-
+        
             try {
                 const response = await fetch(SERVER_URL, { method: 'POST', body: formData });
                 if (response.ok) {
@@ -351,7 +351,15 @@
                         document.getElementById('btn-submit').disabled = false;
                         submitStatus.textContent = '';
                     }, 2000);
+                } else if (response.status === 400) {
+                    // Ошибка валидации (показание не выросло)
+                    const data = await response.json();
+                    submitStatus.textContent = '❌ ' + (data.message || 'Ошибка валидации данных');
+                    submitStatus.className = 'status-box error';
+                    document.getElementById('btn-submit').disabled = false;
+                    // Не добавляем в очередь, пользователь может исправить и отправить снова
                 } else {
+                    // Другие ошибки (сервер недоступен и т.п.)
                     throw new Error('Сервер вернул ' + response.status);
                 }
             } catch (e) {
