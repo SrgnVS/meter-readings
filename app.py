@@ -287,12 +287,10 @@ def readings_view():
         if not files:
             return "Нет бэкапов в папке data/backups", 404
 
-        # Сортируем файлы по дате (свежие последние) – не критично
         files_sorted = sorted(files, key=lambda f: f.get('lastModified', ''), reverse=True)
 
-        # Словарь для уникальных записей (ключ – (qr, created_at))
+        # Собираем уникальные записи из всех бэкапов
         unique_records = {}
-
         for file_info in files_sorted:
             file_path = file_info['path']
             if file_path.startswith('/'):
@@ -310,19 +308,15 @@ def readings_view():
             if not rows:
                 continue
 
-            # Пропускаем заголовки (первая строка)
             for row in rows[1:]:
-                # Ожидаем структуру: ID, QR, Показания, Ссылка, Время_отправки, Время_сохранения
                 if len(row) < 6:
                     continue
                 qr = row[1].strip()
                 if not qr:
                     continue
-                created_at = row[5].strip()  # время сохранения
-                # Используем (qr, created_at) как уникальный ключ
+                created_at = row[5].strip()
                 key = (qr, created_at)
                 if key not in unique_records:
-                    # Сохраняем всю строку
                     unique_records[key] = {
                         'qr': qr,
                         'meter_reading': row[2].strip(),
@@ -342,7 +336,6 @@ def readings_view():
                 grouped[qr] = []
             grouped[qr].append(rec)
 
-        # Для каждого QR сортируем записи по created_at (убывание) и берём две последние
         result_rows = []
         for qr, recs in grouped.items():
             sorted_recs = sorted(recs, key=lambda x: x['created_at'], reverse=True)
@@ -356,62 +349,89 @@ def readings_view():
                 'current_meter': current['meter_reading'] if current else '',
                 'current_created_at': current['created_at'] if current else '',
                 'photo_url': current['photo_url'] if current else '',
-                'timestamp': current['timestamp'] if current else '',
-                'created_at': current['created_at'] if current else ''
             })
 
-        # Сортируем результат по QR (опционально)
         result_rows.sort(key=lambda x: x['qr'])
 
-        # Формируем HTML-таблицу
-        last_modified = datetime.fromisoformat(files_sorted[0]['lastModified']).strftime('%d.%m.%Y %H:%M:%S')
+        # Время последнего бэкапа в МСК
+        last_modified_raw = files_sorted[0]['lastModified']
+        dt_utc = datetime.fromisoformat(last_modified_raw.replace('Z', '+00:00'))
+        moscow_tz = timezone(timedelta(hours=3))
+        dt_moscow = dt_utc.astimezone(moscow_tz)
+        last_modified_str = dt_moscow.strftime('%d.%m.%Y %H:%M:%S')
+
+        # Формируем HTML
         page = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Показания счётчиков (последние два)</title>
+    <style>
+        body {{ font-family: system-ui, -apple-system, sans-serif; background: #f0f4f8; padding: 20px; margin: 0; }}
+        .container {{ max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }}
+        .header {{ display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }}
+        .title {{ font-size: 24px; font-weight: 600; }}
+        .badge {{ font-size: 14px; color: #64748b; }}
+        .refresh-btn {{ background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; transition: opacity 0.3s; }}
+        .refresh-btn:disabled {{ opacity: 0.6; cursor: not-allowed; }}
+        table {{ width: 100%; border-collapse: collapse; font-size: 14px; }}
+        th {{ background: #2563eb; color: white; padding: 10px 12px; text-align: center; }}
+        td {{ padding: 8px 12px; border-bottom: 1px solid #e5e7eb; text-align: center; }}
+        tr:hover {{ background: #f8fafc; }}
+        .photo-link {{ color: #2563eb; text-decoration: none; }}
+        .photo-link:hover {{ text-decoration: underline; }}
+        .footer {{ margin-top: 16px; font-size: 12px; color: #64748b; text-align: center; }}
+        @media (max-width: 600px) {{ table {{ font-size: 12px; }} th, td {{ padding: 6px 8px; }} }}
+    </style>
+    <script>
+        function reloadPage() {{
+            var btn = document.getElementById('refreshBtn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Обновление...';
+            setTimeout(function() {{
+                location.reload();
+            }}, 1000);
+        }}
+    </script>
 </head>
-<body style="font-family: system-ui, -apple-system, sans-serif; background: #f0f4f8; padding: 20px; margin: 0;">
-    <div style="max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px;">
-            <span style="font-size: 24px; font-weight: 600;">📊 Показания счётчиков</span>
-            <span style="font-size: 14px; color: #64748b;">Обновлено: {last_modified}</span>
-            <button onclick="location.reload()" style="background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px;">🔄 Обновить</button>
+<body>
+    <div class="container">
+        <div class="header">
+            <span class="title">📊 Показания счётчиков</span>
+            <span class="badge">Обновлено: {last_modified_str} (МСК)</span>
+            <button id="refreshBtn" class="refresh-btn" onclick="reloadPage()">🔄 Обновить</button>
         </div>
         <div style="overflow-x: auto;">
-            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+            <table>
                 <thead>
                     <tr>
-                        <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Счётчик (QR)</th>
-                        <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Предыдущие показания</th>
-                        <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Дата предыдущих показаний</th>
-                        <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Текущие показания</th>
-                        <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Дата текущих показаний</th>
-                        <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Ссылка на фото (текущее)</th>
-                        <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Время текущего показания</th>
-                        <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Время сохранения (МСК)</th>
+                        <th>Счётчик (QR)</th>
+                        <th>Предыдущие показания, кВт⋅ч</th>
+                        <th>Дата и время предыдущих показаний</th>
+                        <th>Текущие показания, кВт⋅ч</th>
+                        <th>Дата и время текущих показаний</th>
+                        <th>Ссылка на фото (текущее)</th>
                     </tr>
                 </thead>
                 <tbody>"""
         for row in result_rows:
             page += "<tr>"
-            page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{row['qr']}</td>"
-            page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{row['previous_meter']}</td>"
-            page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{row['previous_created_at']}</td>"
-            page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{row['current_meter']}</td>"
-            page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{row['current_created_at']}</td>"
-            page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'><a href='{row['photo_url']}' target='_blank'>Фото</a></td>"
-            page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{row['timestamp']}</td>"
-            page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{row['created_at']}</td>"
+            page += f"<td>{row['qr']}</td>"
+            page += f"<td>{row['previous_meter']}</td>"
+            page += f"<td>{row['previous_created_at']}</td>"
+            page += f"<td>{row['current_meter']}</td>"
+            page += f"<td>{row['current_created_at']}</td>"
+            if row['photo_url']:
+                page += f"<td><a href='{row['photo_url']}' target='_blank' class='photo-link'>Фото</a></td>"
+            else:
+                page += "<td>—</td>"
             page += "</tr>"
         page += f"""
                 </tbody>
             </table>
         </div>
-        <div style="margin-top: 16px; font-size: 12px; color: #64748b;">
-            Всего счётчиков: {len(result_rows)} (по два последних показания)
-        </div>
+        <div class="footer">Всего счётчиков: {len(result_rows)} (по два последних показания)</div>
     </div>
 </body>
 </html>"""
