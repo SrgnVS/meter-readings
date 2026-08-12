@@ -352,7 +352,9 @@ def readings_view():
             result_rows.append({
                 'qr': qr,
                 'previous_meter': previous['meter_reading'] if previous else '',
+                'previous_created_at': previous['created_at'] if previous else '',
                 'current_meter': current['meter_reading'] if current else '',
+                'current_created_at': current['created_at'] if current else '',
                 'photo_url': current['photo_url'] if current else '',
                 'timestamp': current['timestamp'] if current else '',
                 'created_at': current['created_at'] if current else ''
@@ -383,7 +385,9 @@ def readings_view():
                     <tr>
                         <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Счётчик (QR)</th>
                         <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Предыдущие показания</th>
+                        <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Дата предыдущих показаний</th>
                         <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Текущие показания</th>
+                        <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Дата текущих показаний</th>
                         <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Ссылка на фото (текущее)</th>
                         <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Время текущего показания</th>
                         <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Время сохранения (МСК)</th>
@@ -394,7 +398,9 @@ def readings_view():
             page += "<tr>"
             page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{row['qr']}</td>"
             page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{row['previous_meter']}</td>"
+            page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{row['previous_created_at']}</td>"
             page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{row['current_meter']}</td>"
+            page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{row['current_created_at']}</td>"
             page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'><a href='{row['photo_url']}' target='_blank'>Фото</a></td>"
             page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{row['timestamp']}</td>"
             page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{row['created_at']}</td>"
