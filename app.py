@@ -555,8 +555,8 @@ def readings_view():
                                 <th>Дата текущих показаний</th>
                                 <th>Затрачено</th>
                             </tr>
-                        </thead>
-                        <tbody>"""
+</thead>
+         <tbody>"""
                 for row in result_rows:
                     page += "<tr>"
                     page += f"<td>{row['qr']}</td>"
