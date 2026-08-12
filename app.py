@@ -61,11 +61,13 @@ def backup_readings_to_storage():
 
         si = StringIO()
         cw = csv.writer(si, delimiter=';', quoting=csv.QUOTE_ALL)
+        # ЗАГОЛОВКИ ТОЛЬКО НА РУССКОМ (без лишних символов)
         cw.writerow(['ID', 'QR', 'Показания', 'Ссылка на фото', 'Время отправки (МСК)', 'Время сохранения (МСК)'])
 
         moscow_tz = timezone(timedelta(hours=3))
 
         for row in rows:
+            # Преобразуем timestamp
             ts_str = row['timestamp'] or ''
             if ts_str:
                 try:
