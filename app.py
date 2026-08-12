@@ -250,22 +250,24 @@ def readings_view():
         if not files:
             return "Нет бэкапов в папке data/backups", 404
 
-        # Сортируем по дате (самый свежий последний)
         files_sorted = sorted(files, key=lambda f: f.get('lastModified', ''), reverse=True)
         latest_file = files_sorted[0]
         file_path = latest_file['path']
 
-        # Формируем URL для скачивания
         if file_path.startswith('/'):
             file_url = f"https://cdn.relaxdev.ru{file_path}"
         else:
             file_url = f"https://cdn.relaxdev.ru/{file_path}"
 
+        # СКАЧИВАЕМ СОДЕРЖИМОЕ И ЯВНО ДЕКОДИРУЕМ В UTF-8-SIG
         csv_response = requests.get(file_url)
         if csv_response.status_code != 200:
             return f"Не удалось загрузить бэкап: {csv_response.status_code}", 500
 
-        csv_content = csv_response.text
+        # Декодируем содержимое с учётом BOM
+        csv_content = csv_response.content.decode('utf-8-sig')
+
+        # Читаем CSV
         import csv
         from io import StringIO
         reader = csv.reader(StringIO(csv_content), delimiter=';')
