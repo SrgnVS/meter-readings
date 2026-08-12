@@ -289,7 +289,6 @@ def readings_view():
 
         files_sorted = sorted(files, key=lambda f: f.get('lastModified', ''), reverse=True)
 
-        # Собираем уникальные записи из всех бэкапов
         unique_records = {}
         for file_info in files_sorted:
             file_path = file_info['path']
@@ -342,12 +341,29 @@ def readings_view():
             current = sorted_recs[0] if len(sorted_recs) > 0 else None
             previous = sorted_recs[1] if len(sorted_recs) > 1 else None
 
+            # Вычисляем разницу, если есть оба показания
+            diff = ''
+            if previous and current:
+                try:
+                    prev_val = float(previous['meter_reading'].replace(',', '.'))
+                    curr_val = float(current['meter_reading'].replace(',', '.'))
+                    diff_val = curr_val - prev_val
+                    # Форматируем: если целое, то без .0, иначе с одним знаком
+                    if diff_val.is_integer():
+                        diff = f"{int(diff_val)}"
+                    else:
+                        diff = f"{diff_val:.1f}"
+                    diff += " кВт⋅ч"
+                except:
+                    diff = '—'
+
             result_rows.append({
                 'qr': qr,
                 'previous_meter': previous['meter_reading'] if previous else '',
-                'previous_created_at': previous['created_at'] if previous else '',
                 'current_meter': current['meter_reading'] if current else '',
+                'previous_created_at': previous['created_at'] if previous else '',
                 'current_created_at': current['created_at'] if current else '',
+                'diff': diff,
                 'photo_url': current['photo_url'] if current else '',
             })
 
@@ -406,12 +422,16 @@ def readings_view():
             <table>
                 <thead>
                     <tr>
-                        <th>Счётчик (QR)</th>
-                        <th>Предыдущие показания, кВт⋅ч</th>
-                        <th>Дата и время предыдущих показаний</th>
-                        <th>Текущие показания, кВт⋅ч</th>
-                        <th>Дата и время текущих показаний</th>
-                        <th>Ссылка на фото (текущее)</th>
+                        <th rowspan="2">Счётчик (QR)</th>
+                        <th rowspan="2">Предыдущие показания, кВт⋅ч</th>
+                        <th rowspan="2">Текущие показания, кВт⋅ч</th>
+                        <th colspan="3">Затрачено кВт⋅ч</th>
+                        <th rowspan="2">Ссылка на фото (текущее)</th>
+                    </tr>
+                    <tr>
+                        <th>Дата предыдущих показаний</th>
+                        <th>Дата текущих показаний</th>
+                        <th>Затрачено</th>
                     </tr>
                 </thead>
                 <tbody>"""
@@ -419,9 +439,10 @@ def readings_view():
             page += "<tr>"
             page += f"<td>{row['qr']}</td>"
             page += f"<td>{row['previous_meter']}</td>"
-            page += f"<td>{row['previous_created_at']}</td>"
             page += f"<td>{row['current_meter']}</td>"
+            page += f"<td>{row['previous_created_at']}</td>"
             page += f"<td>{row['current_created_at']}</td>"
+            page += f"<td>{row['diff']}</td>"
             if row['photo_url']:
                 page += f"<td><a href='{row['photo_url']}' target='_blank' class='photo-link'>Фото</a></td>"
             else:
