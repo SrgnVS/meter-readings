@@ -380,36 +380,158 @@ def readings_view():
         page = f"""<!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Показания счётчиков (последние два)</title>
-    <style>
-        body {{ font-family: system-ui, -apple-system, sans-serif; background: #f0f4f8; padding: 20px; margin: 0; }}
-        .container {{ max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }}
-        .header {{ display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }}
-        .title {{ font-size: 24px; font-weight: 600; }}
-        .badge {{ font-size: 14px; color: #64748b; }}
-        .refresh-btn {{ background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; transition: opacity 0.3s; }}
-        .refresh-btn:disabled {{ opacity: 0.6; cursor: not-allowed; }}
-        table {{ width: 100%; border-collapse: collapse; font-size: 14px; }}
-        th {{ background: #2563eb; color: white; padding: 10px 12px; text-align: center; }}
-        td {{ padding: 8px 12px; border-bottom: 1px solid #e5e7eb; text-align: center; }}
-        tr:hover {{ background: #f8fafc; }}
-        .photo-link {{ color: #2563eb; text-decoration: none; }}
-        .photo-link:hover {{ text-decoration: underline; }}
-        .footer {{ margin-top: 16px; font-size: 12px; color: #64748b; text-align: center; }}
-        @media (max-width: 600px) {{ table {{ font-size: 12px; }} th, td {{ padding: 6px 8px; }} }}
-    </style>
-    <script>
-        function reloadPage() {{
-            var btn = document.getElementById('refreshBtn');
-            btn.disabled = true;
-            btn.textContent = '⏳ Обновление...';
-            setTimeout(function() {{
-                location.reload();
-            }}, 1000);
-        }}
-    </script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Показания счётчиков (последние два)</title>
+  
+  <!-- Подключаем современный шрифт Inter -->
+  <link rel="preconnect" href="https://googleapis.com">
+  <link rel="preconnect" href="https://gstatic.com" crossorigin>
+  <link href="https://googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <style>
+    body {{
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: #f8fafc; /* Мягкий светлый фон */
+      padding: 40px 20px;
+      margin: 0;
+      color: #0f172a;
+    }}
+    .container {{
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+      border: 1px solid #f1f5f9;
+    }}
+    .header {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 24px;
+    }}
+    .title {{
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }}
+    .badge {{
+      font-size: 13px;
+      color: #64748b;
+    }}
+    .refresh-btn {{
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: background-color 0.2s;
+    }}
+    .refresh-btn:hover {{
+      background: #1d4ed8;
+    }}
+    .refresh-btn:disabled {{
+      opacity: 0.6;
+      cursor: not-allowed;
+    }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }}
+    /* Стильная светлая шапка вместо тяжелой синей */
+    th {{
+      background: #ffffff;
+      color: #64748b;
+      padding: 14px 16px;
+      text-align: left;
+      font-weight: 500;
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid #e2e8f0;
+    }}
+    /* Выравнивание колонок для удобства чтения */
+    th.num-cell, td.num-cell {{
+      text-align: right;
+    }}
+    th.center-cell, td.center-cell {{
+      text-align: center;
+    }}
+    td {{
+      padding: 16px 16px;
+      border-bottom: 1px solid #f1f5f9;
+      color: #334155;
+    }}
+    tr:last-child td {{
+      border-bottom: none;
+    }}
+    tr:hover td {{
+      background: #f8fafc;
+    }}
+    .meter-name {{
+      font-weight: 600;
+      color: #0f172a;
+    }}
+    .date-cell {{
+      color: #64748b;
+      font-size: 13px;
+    }}
+    /* Стильная кнопка-ссылка на фото */
+    .photo-link {{
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      color: #2563eb;
+      background: #eff6ff;
+      padding: 6px 12px;
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 13px;
+      transition: all 0.2s;
+    }}
+    .photo-link:hover {{
+      background: #2563eb;
+      color: white;
+    }}
+    .no-photo {{
+      color: #94a3b8;
+    }}
+    .footer {{
+      margin-top: 24px;
+      font-size: 13px;
+      color: #64748b;
+      text-align: center;
+      border-top: 1px solid #f1f5f9;
+      padding-top: 16px;
+    }}
+    @media (max-width: 768px) {{
+      body {{ padding: 16px 8px; }}
+      th, td {{ padding: 12px 10px; }}
+      th {{ font-size: 10px; }}
+    }}
+  </style>
+  <script>
+    function reloadPage() {{
+      var btn = document.getElementById('refreshBtn');
+      btn.disabled = true;
+      btn.innerHTML = '⏳ Обновление...';
+      setTimeout(function() {{
+        location.reload();
+      }}, 1000);
+    }}
+  </script>
 </head>
 <body>
     <div class="container">
