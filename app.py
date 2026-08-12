@@ -533,50 +533,50 @@ def readings_view():
     }}
   </script>
 </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <span class="title">📊 Показания счётчиков</span>
-                    <span class="badge">Обновлено: {last_modified_str} (МСК)</span>
-                    <button id="refreshBtn" class="refresh-btn" onclick="reloadPage()">🔄 Обновить</button>
-                </div>
-                <div style="overflow-x: auto;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th rowspan="2">Счётчик (QR)</th>
-                                <th rowspan="2">Предыдущие показания, кВт⋅ч</th>
-                                <th rowspan="2">Текущие показания, кВт⋅ч</th>
-                                <th colspan="3">Затрачено кВт⋅ч</th>
-                                <th rowspan="2">Ссылка на фото (текущее)</th>
-                            </tr>
-                            <tr>
-                                <th>Дата предыдущих показаний</th>
-                                <th>Дата текущих показаний</th>
-                                <th>Затрачено</th>
-                            </tr>
-</thead>
-         <tbody>"""
-                for row in result_rows:
-                    page += "<tr>"
-                    page += f"<td>{row['qr']}</td>"
-                    page += f"<td>{row['previous_meter']}</td>"
-                    page += f"<td>{row['current_meter']}</td>"
-                    page += f"<td>{row['previous_created_at']}</td>"
-                    page += f"<td>{row['current_created_at']}</td>"
-                    page += f"<td>{row['diff']}</td>"
-                    if row['photo_url']:
-                        page += f"<td><a href='{row['photo_url']}' target='_blank' class='photo-link'>Фото</a></td>"
-                    else:
-                        page += "<td>—</td>"
-                    page += "</tr>"
-                page += f"""
-                        </tbody>
-                    </table>
-                </div>
-                <div class="footer">Всего счётчиков: {len(result_rows)} (по два последних показания)</div>
-            </div>
-        </body>
+<body>
+    <div class="container">
+        <div class="header">
+            <span class="title">📊 Показания счётчиков</span>
+            <span class="badge">Обновлено: {last_modified_str} (МСК)</span>
+            <button id="refreshBtn" class="refresh-btn" onclick="reloadPage()">🔄 Обновить</button>
+        </div>
+        <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th rowspan="2">Счётчик (QR)</th>
+                        <th rowspan="2">Предыдущие показания, кВт⋅ч</th>
+                        <th rowspan="2">Текущие показания, кВт⋅ч</th>
+                        <th colspan="3">Затрачено кВт⋅ч</th>
+                        <th rowspan="2">Ссылка на фото (текущее)</th>
+                    </tr>
+                    <tr>
+                        <th>Дата предыдущих показаний</th>
+                        <th>Дата текущих показаний</th>
+                        <th>Затрачено</th>
+                    </tr>
+                </thead>
+                <tbody>"""
+        for row in result_rows:
+            page += "<tr>"
+            page += f"<td>{row['qr']}</td>"
+            page += f"<td>{row['previous_meter']}</td>"
+            page += f"<td>{row['current_meter']}</td>"
+            page += f"<td>{row['previous_created_at']}</td>"
+            page += f"<td>{row['current_created_at']}</td>"
+            page += f"<td>{row['diff']}</td>"
+            if row['photo_url']:
+                page += f"<td><a href='{row['photo_url']}' target='_blank' class='photo-link'>Фото</a></td>"
+            else:
+                page += "<td>—</td>"
+            page += "</tr>"
+        page += f"""
+                </tbody>
+            </table>
+        </div>
+        <div class="footer">Всего счётчиков: {len(result_rows)} (по два последних показания)</div>
+    </div>
+</body>
 </html>"""
         return page
     except Exception as e:
