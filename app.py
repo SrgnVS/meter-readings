@@ -575,7 +575,7 @@ def readings_view():
             if row['photo_url']:
                 page += f"<td class='center-cell'><a href='{row['photo_url']}' target='_blank' class='photo-link'>👁 Фото</a></td>"
             else:
-                page += "<td class='center-cell no-photo'>—</td>"
+                page += "<td>—</td>"
             page += "</tr>"
         
         # Финальное закрытие тегов страницы
