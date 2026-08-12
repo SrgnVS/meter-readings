@@ -250,67 +250,74 @@ def readings_view():
         if not files:
             return "Нет бэкапов в папке data/backups", 404
 
+        # Сортируем по дате (самые свежие последние)
         files_sorted = sorted(files, key=lambda f: f.get('lastModified', ''), reverse=True)
-        latest_file = files_sorted[0]
-        file_path = latest_file['path']
 
-        if file_path.startswith('/'):
-            file_url = f"https://cdn.relaxdev.ru{file_path}"
-        else:
-            file_url = f"https://cdn.relaxdev.ru/{file_path}"
+        all_rows = []
+        headers_row = None
 
-        # СКАЧИВАЕМ СОДЕРЖИМОЕ И ЯВНО ДЕКОДИРУЕМ В UTF-8-SIG
-        csv_response = requests.get(file_url)
-        if csv_response.status_code != 200:
-            return f"Не удалось загрузить бэкап: {csv_response.status_code}", 500
+        for file_info in files_sorted:
+            file_path = file_info['path']
+            if file_path.startswith('/'):
+                file_url = f"https://cdn.relaxdev.ru{file_path}"
+            else:
+                file_url = f"https://cdn.relaxdev.ru/{file_path}"
 
-        # Декодируем содержимое с учётом BOM
-        csv_content = csv_response.content.decode('utf-8-sig')
+            csv_response = requests.get(file_url)
+            if csv_response.status_code != 200:
+                continue  # пропускаем файл, если не удалось загрузить
 
-        # Читаем CSV
-        import csv
-        from io import StringIO
-        reader = csv.reader(StringIO(csv_content), delimiter=';')
-        rows = list(reader)
-        if not rows:
-            return "Бэкап пуст", 404
+            csv_content = csv_response.content.decode('utf-8-sig')
+            reader = csv.reader(StringIO(csv_content), delimiter=';')
+            rows = list(reader)
+            if not rows:
+                continue
+
+            # Заголовки берём из первого файла
+            if headers_row is None:
+                headers_row = rows[0]
+                all_rows.extend(rows[1:])  # добавляем данные
+            else:
+                # У остальных файлов пропускаем заголовки
+                all_rows.extend(rows[1:])
+
+        if not headers_row:
+            return "Нет данных в бэкапах", 404
 
         # Экранируем HTML-символы
         import html
+        escaped_headers = [html.escape(cell) for cell in headers_row]
         escaped_rows = []
-        for row in rows:
+        for row in all_rows:
             escaped_rows.append([html.escape(cell) for cell in row])
 
-        headers_row = escaped_rows[0]
-        data_rows = escaped_rows[1:]
+        last_modified = datetime.fromisoformat(files_sorted[0]['lastModified']).strftime('%d.%m.%Y %H:%M:%S')
 
-        last_modified = datetime.fromisoformat(latest_file['lastModified']).strftime('%d.%m.%Y %H:%M:%S')
-
-        # Строим страницу с инлайн-стилями
+        # Строим страницу
         page = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Показания счётчиков</title>
+    <title>Показания счётчиков (все записи)</title>
 </head>
 <body style="font-family: system-ui, -apple-system, sans-serif; background: #f0f4f8; padding: 20px; margin: 0;">
     <div style="max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px;">
-            <span style="font-size: 24px; font-weight: 600;">📊 Показания счётчиков</span>
-            <span style="font-size: 14px; color: #64748b;">Последний бэкап: {last_modified}</span>
+            <span style="font-size: 24px; font-weight: 600;">📊 Показания счётчиков (все записи)</span>
+            <span style="font-size: 14px; color: #64748b;">Обновлено: {last_modified}</span>
             <button onclick="location.reload()" style="background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px;">🔄 Обновить</button>
         </div>
         <div style="overflow-x: auto;">
             <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                 <thead>
                     <tr>"""
-        for col in headers_row:
+        for col in escaped_headers:
             page += f"<th style='background: #2563eb; color: white; padding: 10px 12px; text-align: left; position: sticky; top: 0;'>{col}</th>"
         page += """</tr>
                 </thead>
                 <tbody>"""
-        for row in data_rows:
+        for row in escaped_rows:
             page += "<tr>"
             for cell in row:
                 page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{cell}</td>"
@@ -319,7 +326,9 @@ def readings_view():
                 </tbody>
             </table>
         </div>
-        <div style="margin-top: 16px; font-size: 12px; color: #64748b;">Всего записей: {len(data_rows)}</div>
+        <div style="margin-top: 16px; font-size: 12px; color: #64748b;">
+            Всего записей: {len(escaped_rows)} (из {len(files_sorted)} бэкап-файлов)
+        </div>
     </div>
 </body>
 </html>"""
