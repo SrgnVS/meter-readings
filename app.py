@@ -121,30 +121,67 @@ def upload():
         timestamp = request.form.get('timestamp', datetime.now().isoformat())
         photo_file = request.files.get('photo')
 
+        # --- НОВАЯ ПРОВЕРКА: показания должны быть больше предыдущего для этого QR ---
+        if qr_data and qr_data != 'нет_qr':
+            conn_check = get_db()
+            cursor_check = conn_check.cursor()
+            cursor_check.execute(
+                'SELECT meter_reading FROM readings WHERE qr = ? ORDER BY created_at DESC LIMIT 1',
+                (qr_data,)
+            )
+            last_row = cursor_check.fetchone()
+            conn_check.close()
+
+            if last_row:
+                try:
+                    # Преобразуем к числу (заменяем запятую на точку для дробных)
+                    last_val = float(last_row['meter_reading'].replace(',', '.'))
+                    new_val = float(meter_value.replace(',', '.'))
+                    if new_val <= last_val:
+                        return jsonify({
+                            "status": "error",
+                            "message": f"Новое показание ({meter_value}) должно быть больше предыдущего ({last_row['meter_reading']})"
+                        }), 400
+                except ValueError:
+                    # Если не удалось преобразовать (например, буквы), пропускаем проверку
+                    pass
+        # --- конец проверки ---
+
+        # Очищаем QR-код для имени файла
         qr_clean = ''.join(c for c in qr_data if c.isalnum() or c in '-_')
         if not qr_clean:
             qr_clean = "unknown"
 
+        # Московское время для имени файла
         moscow_tz = timezone(timedelta(hours=3))
         moscow_now = datetime.now(moscow_tz).strftime("%Y-%m-%d_%H-%M-%S")
         base_filename = f"{qr_clean}_{moscow_now}"
 
         photo_url = None
+
         if photo_file and photo_file.filename != '':
             filename = secure_filename(f"{base_filename}.jpg")
             files = {'file': (filename, photo_file.stream, 'image/jpeg')}
+
             if not STORAGE_API_KEY:
+                print("STORAGE_API_KEY не найден в переменных окружения!")
                 filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 photo_file.save(filepath)
                 photo_url = f"/local_photo/{filename}"
             else:
                 headers = {'Authorization': f'Bearer {STORAGE_API_KEY}'}
-                response = requests.post(STORAGE_UPLOAD_URL, headers=headers, files=files, data={'webp': 'false'})
+                response = requests.post(
+                    STORAGE_UPLOAD_URL,
+                    headers=headers,
+                    files=files,
+                    data={'webp': 'false'}
+                )
+
                 if response.status_code == 200:
                     data = response.json()
                     if data.get('success'):
                         photo_url = data.get('url')
-                        print(f"Фото загружено: {photo_url}")
+                        print(f"Фото загружено в хранилище: {photo_url}")
                     else:
                         print(f"Ошибка API: {data}")
                 else:
@@ -153,7 +190,7 @@ def upload():
                     photo_file.save(filepath)
                     photo_url = f"/local_photo/{filename}"
 
-        # Сохраняем в БД
+        # Сохраняем запись в БД
         moscow_now_db = datetime.now(moscow_tz).strftime("%Y-%m-%d %H:%M:%S")
         conn = get_db()
         cursor = conn.cursor()
@@ -164,11 +201,11 @@ def upload():
         conn.commit()
         conn.close()
 
-        # ---- БЭКАП В STORAGE ----
+        # Создаём бэкап в Storage
         try:
             backup_readings_to_storage()
         except Exception as e:
-            print(f"Ошибка при бэкапе: {e}")
+            print(f"Ошибка при создании бэкапа: {e}")
 
         return jsonify({
             "status": "ok",
@@ -250,11 +287,11 @@ def readings_view():
         if not files:
             return "Нет бэкапов в папке data/backups", 404
 
-        # Сортируем по дате (самые свежие последние)
+        # Сортируем файлы по дате (свежие последние) – не критично
         files_sorted = sorted(files, key=lambda f: f.get('lastModified', ''), reverse=True)
 
-        all_rows = []
-        headers_row = None
+        # Словарь для уникальных записей (ключ – (qr, created_at))
+        unique_records = {}
 
         for file_info in files_sorted:
             file_path = file_info['path']
@@ -265,7 +302,7 @@ def readings_view():
 
             csv_response = requests.get(file_url)
             if csv_response.status_code != 200:
-                continue  # пропускаем файл, если не удалось загрузить
+                continue
 
             csv_content = csv_response.content.decode('utf-8-sig')
             reader = csv.reader(StringIO(csv_content), delimiter=';')
@@ -273,61 +310,101 @@ def readings_view():
             if not rows:
                 continue
 
-            # Заголовки берём из первого файла
-            if headers_row is None:
-                headers_row = rows[0]
-                all_rows.extend(rows[1:])  # добавляем данные
-            else:
-                # У остальных файлов пропускаем заголовки
-                all_rows.extend(rows[1:])
+            # Пропускаем заголовки (первая строка)
+            for row in rows[1:]:
+                # Ожидаем структуру: ID, QR, Показания, Ссылка, Время_отправки, Время_сохранения
+                if len(row) < 6:
+                    continue
+                qr = row[1].strip()
+                if not qr:
+                    continue
+                created_at = row[5].strip()  # время сохранения
+                # Используем (qr, created_at) как уникальный ключ
+                key = (qr, created_at)
+                if key not in unique_records:
+                    # Сохраняем всю строку
+                    unique_records[key] = {
+                        'qr': qr,
+                        'meter_reading': row[2].strip(),
+                        'photo_url': row[3].strip(),
+                        'timestamp': row[4].strip(),
+                        'created_at': created_at
+                    }
 
-        if not headers_row:
+        if not unique_records:
             return "Нет данных в бэкапах", 404
 
-        # Экранируем HTML-символы
-        import html
-        escaped_headers = [html.escape(cell) for cell in headers_row]
-        escaped_rows = []
-        for row in all_rows:
-            escaped_rows.append([html.escape(cell) for cell in row])
+        # Группируем по QR
+        grouped = {}
+        for key, rec in unique_records.items():
+            qr = rec['qr']
+            if qr not in grouped:
+                grouped[qr] = []
+            grouped[qr].append(rec)
 
+        # Для каждого QR сортируем записи по created_at (убывание) и берём две последние
+        result_rows = []
+        for qr, recs in grouped.items():
+            sorted_recs = sorted(recs, key=lambda x: x['created_at'], reverse=True)
+            current = sorted_recs[0] if len(sorted_recs) > 0 else None
+            previous = sorted_recs[1] if len(sorted_recs) > 1 else None
+
+            result_rows.append({
+                'qr': qr,
+                'previous_meter': previous['meter_reading'] if previous else '',
+                'current_meter': current['meter_reading'] if current else '',
+                'photo_url': current['photo_url'] if current else '',
+                'timestamp': current['timestamp'] if current else '',
+                'created_at': current['created_at'] if current else ''
+            })
+
+        # Сортируем результат по QR (опционально)
+        result_rows.sort(key=lambda x: x['qr'])
+
+        # Формируем HTML-таблицу
         last_modified = datetime.fromisoformat(files_sorted[0]['lastModified']).strftime('%d.%m.%Y %H:%M:%S')
-
-        # Строим страницу
         page = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Показания счётчиков (все записи)</title>
+    <title>Показания счётчиков (последние два)</title>
 </head>
 <body style="font-family: system-ui, -apple-system, sans-serif; background: #f0f4f8; padding: 20px; margin: 0;">
     <div style="max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px;">
-            <span style="font-size: 24px; font-weight: 600;">📊 Показания счётчиков (все записи)</span>
+            <span style="font-size: 24px; font-weight: 600;">📊 Показания счётчиков</span>
             <span style="font-size: 14px; color: #64748b;">Обновлено: {last_modified}</span>
             <button onclick="location.reload()" style="background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px;">🔄 Обновить</button>
         </div>
         <div style="overflow-x: auto;">
             <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
                 <thead>
-                    <tr>"""
-        for col in escaped_headers:
-            page += f"<th style='background: #2563eb; color: white; padding: 10px 12px; text-align: left; position: sticky; top: 0;'>{col}</th>"
-        page += """</tr>
+                    <tr>
+                        <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Счётчик (QR)</th>
+                        <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Предыдущие показания</th>
+                        <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Текущие показания</th>
+                        <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Ссылка на фото (текущее)</th>
+                        <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Время текущего показания</th>
+                        <th style="background: #2563eb; color: white; padding: 10px 12px; text-align: left;">Время сохранения (МСК)</th>
+                    </tr>
                 </thead>
                 <tbody>"""
-        for row in escaped_rows:
+        for row in result_rows:
             page += "<tr>"
-            for cell in row:
-                page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{cell}</td>"
+            page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{row['qr']}</td>"
+            page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{row['previous_meter']}</td>"
+            page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{row['current_meter']}</td>"
+            page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'><a href='{row['photo_url']}' target='_blank'>Фото</a></td>"
+            page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{row['timestamp']}</td>"
+            page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{row['created_at']}</td>"
             page += "</tr>"
         page += f"""
                 </tbody>
             </table>
         </div>
         <div style="margin-top: 16px; font-size: 12px; color: #64748b;">
-            Всего записей: {len(escaped_rows)} (из {len(files_sorted)} бэкап-файлов)
+            Всего счётчиков: {len(result_rows)} (по два последних показания)
         </div>
     </div>
 </body>
