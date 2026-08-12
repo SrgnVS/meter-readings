@@ -248,10 +248,12 @@ def readings_view():
         if not files:
             return "Нет бэкапов в папке data/backups", 404
 
+        # Сортируем по дате (самый свежий последний)
         files_sorted = sorted(files, key=lambda f: f.get('lastModified', ''), reverse=True)
         latest_file = files_sorted[0]
         file_path = latest_file['path']
 
+        # Формируем URL для скачивания
         if file_path.startswith('/'):
             file_url = f"https://cdn.relaxdev.ru{file_path}"
         else:
@@ -262,12 +264,15 @@ def readings_view():
             return f"Не удалось загрузить бэкап: {csv_response.status_code}", 500
 
         csv_content = csv_response.text
+        import csv
+        from io import StringIO
         reader = csv.reader(StringIO(csv_content), delimiter=';')
         rows = list(reader)
         if not rows:
             return "Бэкап пуст", 404
 
-        # Экранируем все данные, чтобы избежать проблем с HTML
+        # Экранируем HTML-символы
+        import html
         escaped_rows = []
         for row in rows:
             escaped_rows.append([html.escape(cell) for cell in row])
@@ -275,58 +280,48 @@ def readings_view():
         headers_row = escaped_rows[0]
         data_rows = escaped_rows[1:]
 
-        html_template = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>Показания счётчиков</title>
-            <style>
-                body { font-family: system-ui, -apple-system, sans-serif; background: #f0f4f8; padding: 20px; margin: 0; }
-                .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
-                h1 { font-size: 24px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
-                .badge { font-size: 14px; font-weight: normal; color: #64748b; }
-                table { width: 100%; border-collapse: collapse; font-size: 14px; }
-                th { background: #2563eb; color: white; padding: 10px 12px; text-align: left; position: sticky; top: 0; }
-                td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; }
-                tr:hover { background: #f8fafc; }
-                .refresh-btn { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px; }
-                .refresh-btn:hover { background: #1d4ed8; }
-                @media (max-width: 600px) { table { font-size: 12px; } th, td { padding: 6px 8px; } }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>
-                    <span>📊 Показания счётчиков</span>
-                    <span class="badge">Последний бэкап: {last_modified}</span>
-                    <button class="refresh-btn" onclick="location.reload()">🔄 Обновить</button>
-                </h1>
-                <div style="overflow-x: auto;">
-                    <table>
-                        <thead><tr>{headers}</tr></thead>
-                        <tbody>{rows}</tbody>
-                    </table>
-                </div>
-                <div style="margin-top: 16px; font-size: 12px; color: #64748b;">Всего записей: {count}</div>
-            </div>
-        </body>
-        </html>
-        """
-        headers_html = ''.join(f'<th>{col}</th>' for col in headers_row)
-        rows_html = ''.join(f'<tr>{"".join(f"<td>{col}</td>" for col in row)}</tr>' for row in data_rows)
         last_modified = datetime.fromisoformat(latest_file['lastModified']).strftime('%d.%m.%Y %H:%M:%S')
 
-        return html_template.format(
-            last_modified=last_modified,
-            headers=headers_html,
-            rows=rows_html,
-            count=len(data_rows)
-        )
+        # Строим страницу с инлайн-стилями
+        page = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Показания счётчиков</title>
+</head>
+<body style="font-family: system-ui, -apple-system, sans-serif; background: #f0f4f8; padding: 20px; margin: 0;">
+    <div style="max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px;">
+            <span style="font-size: 24px; font-weight: 600;">📊 Показания счётчиков</span>
+            <span style="font-size: 14px; color: #64748b;">Последний бэкап: {last_modified}</span>
+            <button onclick="location.reload()" style="background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 14px;">🔄 Обновить</button>
+        </div>
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                <thead>
+                    <tr>"""
+        for col in headers_row:
+            page += f"<th style='background: #2563eb; color: white; padding: 10px 12px; text-align: left; position: sticky; top: 0;'>{col}</th>"
+        page += """</tr>
+                </thead>
+                <tbody>"""
+        for row in data_rows:
+            page += "<tr>"
+            for cell in row:
+                page += f"<td style='padding: 8px 12px; border-bottom: 1px solid #e5e7eb;'>{cell}</td>"
+            page += "</tr>"
+        page += f"""
+                </tbody>
+            </table>
+        </div>
+        <div style="margin-top: 16px; font-size: 12px; color: #64748b;">Всего записей: {len(data_rows)}</div>
+    </div>
+</body>
+</html>"""
+        return page
     except Exception as e:
         return f"Ошибка: {e}", 500
-
 
 if __name__ == '__main__':
     app.run(debug=True)
