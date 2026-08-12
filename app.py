@@ -327,7 +327,6 @@ def readings_view():
         if not unique_records:
             return "Нет данных в бэкапах", 404
 
-        # Группируем по QR
         grouped = {}
         for key, rec in unique_records.items():
             qr = rec['qr']
@@ -341,19 +340,16 @@ def readings_view():
             current = sorted_recs[0] if len(sorted_recs) > 0 else None
             previous = sorted_recs[1] if len(sorted_recs) > 1 else None
 
-            # Вычисляем разницу, если есть оба показания
             diff = ''
             if previous and current:
                 try:
                     prev_val = float(previous['meter_reading'].replace(',', '.'))
                     curr_val = float(current['meter_reading'].replace(',', '.'))
                     diff_val = curr_val - prev_val
-                    # Форматируем: если целое, то без .0, иначе с одним знаком
                     if diff_val.is_integer():
-                        diff = f"{int(diff_val)}"
+                        diff = f"{int(diff_val)} кВт⋅ч"
                     else:
-                        diff = f"{diff_val:.1f}"
-                    diff += " кВт⋅ч"
+                        diff = f"{diff_val:.1f} кВт⋅ч"
                 except:
                     diff = '—'
 
@@ -369,169 +365,147 @@ def readings_view():
 
         result_rows.sort(key=lambda x: x['qr'])
 
-        # Время последнего бэкапа в МСК
         last_modified_raw = files_sorted[0]['lastModified']
         dt_utc = datetime.fromisoformat(last_modified_raw.replace('Z', '+00:00'))
         moscow_tz = timezone(timedelta(hours=3))
         dt_moscow = dt_utc.astimezone(moscow_tz)
         last_modified_str = dt_moscow.strftime('%d.%m.%Y %H:%M:%S')
 
-        # Формируем HTML
         page = f"""<!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Показания счётчиков (последние два)</title>
-  
-  <!-- Подключаем современный шрифт Inter -->
-  <link rel="preconnect" href="https://googleapis.com">
-  <link rel="preconnect" href="https://gstatic.com" crossorigin>
-  <link href="https://googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-
-  <style>
-    body {{
-      font-family: 'Inter', system-ui, -apple-system, sans-serif;
-      background: #f8fafc; /* Мягкий светлый фон */
-      padding: 40px 20px;
-      margin: 0;
-      color: #0f172a;
-    }}
-    .container {{
-      max-width: 1200px;
-      margin: 0 auto;
-      background: white;
-      padding: 24px;
-      border-radius: 12px;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-      border: 1px solid #f1f5f9;
-    }}
-    .header {{
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 16px;
-      margin-bottom: 24px;
-    }}
-    .title {{
-      font-size: 20px;
-      font-weight: 600;
-      letter-spacing: -0.02em;
-    }}
-    .badge {{
-      font-size: 13px;
-      color: #64748b;
-    }}
-    .refresh-btn {{
-      background: #2563eb;
-      color: white;
-      border: none;
-      padding: 8px 16px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 13px;
-      font-weight: 500;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      transition: background-color 0.2s;
-    }}
-    .refresh-btn:hover {{
-      background: #1d4ed8;
-    }}
-    .refresh-btn:disabled {{
-      opacity: 0.6;
-      cursor: not-allowed;
-    }}
-    table {{
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 14px;
-    }}
-    /* Стильная светлая шапка вместо тяжелой синей */
-    th {{
-      background: #ffffff;
-      color: #64748b;
-      padding: 14px 16px;
-      text-align: left;
-      font-weight: 500;
-      text-transform: uppercase;
-      font-size: 11px;
-      letter-spacing: 0.05em;
-      border-bottom: 1px solid #e2e8f0;
-    }}
-    /* Выравнивание колонок для удобства чтения */
-    th.num-cell, td.num-cell {{
-      text-align: right;
-    }}
-    th.center-cell, td.center-cell {{
-      text-align: center;
-    }}
-    td {{
-      padding: 16px 16px;
-      border-bottom: 1px solid #f1f5f9;
-      color: #334155;
-    }}
-    tr:last-child td {{
-      border-bottom: none;
-    }}
-    tr:hover td {{
-      background: #f8fafc;
-    }}
-    .meter-name {{
-      font-weight: 600;
-      color: #0f172a;
-    }}
-    .date-cell {{
-      color: #64748b;
-      font-size: 13px;
-    }}
-    /* Стильная кнопка-ссылка на фото */
-    .photo-link {{
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      color: #2563eb;
-      background: #eff6ff;
-      padding: 6px 12px;
-      border-radius: 6px;
-      text-decoration: none;
-      font-weight: 500;
-      font-size: 13px;
-      transition: all 0.2s;
-    }}
-    .photo-link:hover {{
-      background: #2563eb;
-      color: white;
-    }}
-    .no-photo {{
-      color: #94a3b8;
-    }}
-    .footer {{
-      margin-top: 24px;
-      font-size: 13px;
-      color: #64748b;
-      text-align: center;
-      border-top: 1px solid #f1f5f9;
-      padding-top: 16px;
-    }}
-    @media (max-width: 768px) {{
-      body {{ padding: 16px 8px; }}
-      th, td {{ padding: 12px 10px; }}
-      th {{ font-size: 10px; }}
-    }}
-  </style>
-  <script>
-    function reloadPage() {{
-      var btn = document.getElementById('refreshBtn');
-      btn.disabled = true;
-      btn.innerHTML = '⏳ Обновление...';
-      setTimeout(function() {{
-        location.reload();
-      }}, 1000);
-    }}
-  </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Показания счётчиков (последние два)</title>
+    <style>
+        body {{
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #e9edf2; /* Спокойный серо-голубой фон */
+            padding: 20px;
+            margin: 0;
+        }}
+        .container {{
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #ffffff;
+            padding: 24px;
+            border-radius: 16px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+            border: 1px solid #dce3ec;
+        }}
+        .header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-bottom: 20px;
+        }}
+        .title {{
+            font-size: 22px;
+            font-weight: 600;
+            color: #1e2a3a;
+        }}
+        .badge {{
+            font-size: 14px;
+            color: #4a5b6e;
+            background: #eef2f7;
+            padding: 4px 12px;
+            border-radius: 20px;
+        }}
+        .refresh-btn {{
+            background: #3a6b9b;
+            color: white;
+            border: none;
+            padding: 8px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.2s;
+        }}
+        .refresh-btn:hover {{
+            background: #2c5780;
+        }}
+        .refresh-btn:disabled {{
+            opacity: 0.6;
+            cursor: not-allowed;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+            background: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+        }}
+        th {{
+            background: #dce3ec;
+            color: #1e2a3a;
+            padding: 14px 16px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 13px;
+            letter-spacing: 0.02em;
+            border-bottom: 2px solid #c0ccdb;
+        }}
+        td {{
+            padding: 14px 16px;
+            border-bottom: 1px solid #e6ecf3;
+            text-align: center;
+            color: #1e2a3a;
+        }}
+        tr:last-child td {{
+            border-bottom: none;
+        }}
+        tr:nth-child(even) td {{
+            background: #f8faff;
+        }}
+        tr:hover td {{
+            background: #e6edf6;
+        }}
+        .photo-link {{
+            display: inline-block;
+            background: #e0ecf9;
+            color: #1e4a76;
+            padding: 4px 14px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 13px;
+            transition: background 0.2s;
+        }}
+        .photo-link:hover {{
+            background: #b5cde0;
+        }}
+        .no-photo {{
+            color: #7a8a9e;
+        }}
+        .footer {{
+            margin-top: 20px;
+            font-size: 13px;
+            color: #4a5b6e;
+            text-align: center;
+            border-top: 1px solid #dce3ec;
+            padding-top: 16px;
+        }}
+        @media (max-width: 600px) {{
+            body {{ padding: 10px; }}
+            .container {{ padding: 16px; }}
+            th, td {{ padding: 10px 8px; font-size: 12px; }}
+            .title {{ font-size: 18px; }}
+        }}
+    </style>
+    <script>
+        function reloadPage() {{
+            var btn = document.getElementById('refreshBtn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Обновление...';
+            setTimeout(function() {{
+                location.reload();
+            }}, 1000);
+        }}
+    </script>
 </head>
 <body>
     <div class="container">
@@ -559,12 +533,13 @@ def readings_view():
                 <tbody>"""
         for row in result_rows:
             page += "<tr>"
-            page += f"<td>{row['qr']}</td>"
+            page += f"<td><strong>{row['qr']}</strong></td>"
             page += f"<td>{row['previous_meter']}</td>"
             page += f"<td>{row['current_meter']}</td>"
             page += f"<td>{row['previous_created_at']}</td>"
             page += f"<td>{row['current_created_at']}</td>"
-            page += f"<td>{row['diff']}</td>"
+            # Явно выравниваем затрачено по центру
+            page += f"<td style='text-align: center; font-weight: 500; color: #1e5a3a;'>{row['diff']}</td>"
             if row['photo_url']:
                 page += f"<td><a href='{row['photo_url']}' target='_blank' class='photo-link'>Фото</a></td>"
             else:
