@@ -551,17 +551,26 @@ def readings_view():
                     <th class="center-cell">Дата текущих</th>
                     <th class="center-cell">Ссылка на фото</th>
                   </tr>
+                  
+                  <tr>
+                         <th>Дата предыдущих показаний</th>
+                        <th>Дата текущих показаний</th>
+                        <th>Затрачено</th>
+                  </tr>
+                        
+                    
                 </thead>
                 <tbody>"""
         
         # Цикл генерации строк таблицы
         for row in result_rows:
             page += "<tr>"
-            page += f"<td class='meter-name'>{row['qr']}</td>"
-            page += f"<td class='num-cell'>{row['previous_meter']}</td>"
-            page += f"<td class='date-cell center-cell'>{row['previous_created_at']}</td>"
-            page += f"<td class='num-cell'>{row['current_meter']}</td>"
-            page += f"<td class='date-cell center-cell'>{row['current_created_at']}</td>"
+            page += f"<td>{row['qr']}</td>"
+            page += f"<td>{row['previous_meter']}</td>"
+            page += f"<td>{row['current_meter']}</td>"
+            page += f"<td>{row['previous_created_at']}</td>"
+            page += f"<td>{row['current_created_at']}</td>"
+            page += f"<td>{row['diff']}</td>"
             
             if row['photo_url']:
                 page += f"<td class='center-cell'><a href='{row['photo_url']}' target='_blank' class='photo-link'>👁 Фото</a></td>"
