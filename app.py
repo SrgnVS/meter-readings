@@ -23,6 +23,21 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
 STORAGE_API_KEY = os.environ.get('STORAGE_API_KEY')
 STORAGE_UPLOAD_URL = "https://relaxdev.ru/api/v1/storage/upload"
 
+# ========== OCR (EasyOCR) ==========
+import easyocr
+import io
+from PIL import Image
+
+# Инициализируем EasyOCR (глобально, один раз)
+try:
+    reader = easyocr.Reader(['en'], gpu=False)
+    OCR_AVAILABLE = True
+    print("✅ EasyOCR инициализирован")
+except Exception as e:
+    print(f"❌ EasyOCR не загружен: {e}")
+    reader = None
+    OCR_AVAILABLE = False
+
 # ========== БАЗА ДАННЫХ ==========
 def get_db():
     db_path = os.path.join(os.path.dirname(__file__), 'meter_data.db')
@@ -123,12 +138,48 @@ def index():
 def ping():
     return 'pong'
 
-# ---- РАСПОЗНАВАНИЕ (пока без EasyOCR) ----
+# ---- РАСПОЗНАВАНИЕ (OCR) ----
 @app.route('/recognize', methods=['GET', 'POST'])
 def recognize():
     if request.method == 'GET':
-        return "OCR endpoint is working (EasyOCR disabled).", 200
-    return jsonify({"digits": "12345"}), 200
+        if OCR_AVAILABLE:
+            return "OCR endpoint is working with EasyOCR", 200
+        else:
+            return "OCR endpoint is working (EasyOCR disabled)", 200
+
+    if not OCR_AVAILABLE:
+        return jsonify({"digits": "12345"}), 200
+
+    try:
+        if 'photo' not in request.files:
+            return jsonify({"error": "No photo"}), 400
+
+        photo_file = request.files['photo']
+        image_data = photo_file.read()
+        if len(image_data) == 0:
+            return jsonify({"digits": ""}), 200
+
+        # Открываем изображение через Pillow
+        img = Image.open(io.BytesIO(image_data))
+        # Распознаём текст
+        result = reader.readtext(img, detail=1, paragraph=False)
+        if not result:
+            return jsonify({"digits": ""}), 200
+
+        # Собираем все цифры из распознанных блоков
+        all_digits = ""
+        for (bbox, text, confidence) in result:
+            digits = ''.join(ch for ch in text if ch.isdigit())
+            if digits:
+                all_digits += digits
+
+        return jsonify({"digits": all_digits}), 200
+
+    except Exception as e:
+        print(f"OCR ошибка: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 # ---- ОСНОВНОЙ UPLOAD ----
 @app.route('/upload', methods=['POST'])
