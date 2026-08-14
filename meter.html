@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Счётчик</title>
+    <style>
+        * { box-sizing: border-box; font-family: system-ui, sans-serif; margin: 0; padding: 0; }
+        body { background: #f0f4f8; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 16px; }
+        .app { max-width: 480px; width: 100%; background: white; border-radius: 32px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); padding: 24px 20px; }
+        h1 { font-size: 24px; font-weight: 600; margin-bottom: 16px; }
+        .step { display: none; flex-direction: column; gap: 16px; }
+        .step.active { display: flex; }
+        .btn { background: #2563eb; color: white; border: none; padding: 14px 20px; border-radius: 16px; font-size: 16px; font-weight: 500; cursor: pointer; transition: 0.2s; width: 100%; text-align: center; }
+        .btn:active { transform: scale(0.97); }
+        .btn-secondary { background: #e5e7eb; color: #1f2937; }
+        .video-container, .preview-container { background: #1e293b; border-radius: 20px; overflow: hidden; position: relative; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; }
+        .video-wrapper { position: relative; width: 100%; height: 100%; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        
+        /* Желтая рамка поверх видео */
+        .crop-overlay {
+            position: absolute;
+            border: 4px solid #facc15;
+            border-radius: 8px;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+            /* Размеры рамки: 70% по ширине, 30% по высоте */
+            width: 70%;
+            height: 30%;
+            top: 35%;
+            left: 15%;
+            pointer-events: none;
+        }
+        
+        /* Стили для предпросмотра результата */
+        #preview-img { width: 100%; height: 100%; object-fit: contain; background: #000; }
+    </style>
+</head>
+<body>
+
+<div class="app">
+    <!-- Шаг 1: Камера -->
+    <div id="step-camera" class="step active">
+        <h1>Сделайте фото</h1>
+        <div class="video-container">
+            <div class="video-wrapper">
+                <video id="webcam" autoplay playsinline></video>
+                <div class="crop-overlay" id="overlay"></div>
+            </div>
+        </div>
+        <button class="btn" id="snap-btn">Сфотографировать</button>
+    </div>
+
+    <!-- Шаг 2: Результат -->
+    <div id="step-preview" class="step">
+        <h1>Результат обрезки</h1>
+        <div class="preview-container">
+            <img id="preview-img" alt="Обрезанное фото">
+        </div>
+        <button class="btn btn-secondary" id="retry-btn">Повторить</button>
+    </div>
+</div>
+
+<!-- Скрытый холст для обработки графики -->
+<canvas id="hidden-canvas" style="display: none;"></canvas>
+
+<script>
+    const video = document.getElementById('webcam');
+    const snapBtn = document.getElementById('snap-btn');
+    const retryBtn = document.getElementById('retry-btn');
+    const previewImg = document.getElementById('preview-img');
+    const overlay = document.getElementById('overlay');
+    const canvas = document.getElementById('hidden-canvas');
+    const ctx = canvas.getContext('2d');
+
+    const stepCamera = document.getElementById('step-camera');
+    const stepPreview = document.getElementById('step-preview');
+
+    // Включение камеры при запуске
+    async function startCamera() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }, 
+                audio: false 
+            });
+            video.srcObject = stream;
+        } catch (err) {
+            alert('Ошибка доступа к камере: ' + err.message);
+        }
+    }
+
+    // Логика обрезки кадра
+    function captureAndCrop() {
+        // Получаем реальные размеры видеопотока
+        const videoWidth = video.videoWidth;
+        const videoHeight = video.videoHeight;
+
+        if (!videoWidth || !videoHeight) return;
+
+        // Рассчитываем реальные масштабы CSS к размерам видео
+        const displayWidth = video.offsetWidth;
+        const displayHeight = video.offsetHeight;
+
+        // Коэффициенты масштабирования из-за object-fit: cover
+        const scale = Math.max(displayWidth / videoWidth, displayHeight / videoHeight);
+        const viewWidth = videoWidth * scale;
+        const viewHeight = videoHeight * scale;
+
+        const xOffset = (viewWidth - displayWidth) / 2;
+        const yOffset = (viewHeight - displayHeight) / 2;
+
+        // Процентные координаты рамки относительно контейнера видео
+        const rect = overlay.getBoundingClientRect();
+        const containerRect = video.parentElement.getBoundingClientRect();
+
+        const cropXPercent = (rect.left - containerRect.left + xOffset) / viewWidth;
+        const cropYPercent = (rect.top - containerRect.top + yOffset) / viewHeight;
+        const cropWPercent = rect.width / viewWidth;
+        const cropHPercent = rect.height / viewHeight;
+
+        // Финальные координаты для вырезания на реальном холсте
+        const sourceX = cropXPercent * videoWidth;
+        const sourceY = cropYPercent * videoHeight;
+        const sourceW = cropWPercent * videoWidth;
+        const sourceH = cropHPercent * videoHeight;
+
+        // Задаем физический размер для итогового изображения
+        canvas.width = sourceW;
+        canvas.height = sourceH;
+
+        // Отрисовываем на холсте только нужную область
+        ctx.drawImage(video, sourceX, sourceY, sourceW, sourceH, 0, 0, sourceW, sourceH);
+
+        // Превращаем холст в картинку Base64
+        previewImg.src = canvas.toDataURL('image/jpeg', 0.9);
+
+        // Переключаем экраны
+        stepCamera.classList.remove('active');
+        stepPreview.classList.add('active');
+    }
+
+    // Слушатели событий
+    snapBtn.addEventListener('click', captureAndCrop);
+    
+    retryBtn.addEventListener('click', () => {
+        stepPreview.classList.remove('active');
+        stepCamera.classList.add('active');
+    });
+
+    // Старт
+    startCamera();
+</script>
+</body>
+</html>
