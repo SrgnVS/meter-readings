@@ -349,7 +349,7 @@
             if (!ok) showStep('step-start');
         }
 
-        document.getElementById('btn-take-photo').addEventListener('click', () => {
+        document.getElementById('btn-take-photo').addEventListener('click', function() {
             const video = document.getElementById('photo-video');
             if (!video.videoWidth || !video.videoHeight) {
                 alert('Камера не готова, попробуйте ещё раз.');
