@@ -123,47 +123,46 @@ def backup_readings_to_storage():
 def recognize():
     if request.method == 'GET':
         return "OCR endpoint is working. Use POST with photo.", 200
-
     try:
         print("=== /recognize POST вызван ===")
         if 'photo' not in request.files:
             print("Нет файла photo в запросе")
             return jsonify({"error": "No photo"}), 400
 
-        photo_file = request.files['photo']
-        print(f"Имя файла: {photo_file.filename}")
-        image_data = photo_file.read()
-        print(f"Размер фото: {len(image_data)} байт")
+            photo_file = request.files['photo']
+            print(f"Имя файла: {photo_file.filename}")
+            image_data = photo_file.read()
+            print(f"Размер фото: {len(image_data)} байт")
 
-        if len(image_data) == 0:
-            print("Пустое изображение")
-            return jsonify({"digits": ""}), 200
+            if len(image_data) == 0:
+                print("Пустое изображение")
+                return jsonify({"digits": ""}), 200
 
-        img = Image.open(io.BytesIO(image_data))
-        print(f"Изображение открыто: {img.size}")
+            img = Image.open(io.BytesIO(image_data))
+            print(f"Изображение открыто: {img.size}")
 
-        result = reader.readtext(img, detail=1, paragraph=False)
-        print(f"Результат распознавания: {result}")
+            result = reader.readtext(img, detail=1, paragraph=False)
+            print(f"Результат распознавания: {result}")
 
-        if not result:
-            print("Ничего не распознано")
-            return jsonify({"digits": ""}), 200
+            if not result:
+                print("Ничего не распознано")
+                return jsonify({"digits": ""}), 200
 
-        all_digits = ""
-        for (bbox, text, confidence) in result:
-            print(f"Распознан текст: '{text}' с уверенностью {confidence:.2f}")
-            digits = ''.join(ch for ch in text if ch.isdigit())
-            if digits:
-                all_digits += digits
+            all_digits = ""
+                for (bbox, text, confidence) in result:
+                    print(f"Распознан текст: '{text}' с уверенностью {confidence:.2f}")
+                    digits = ''.join(ch for ch in text if ch.isdigit())
+                    if digits:
+                        all_digits += digits
 
-        print(f"Итоговые цифры: '{all_digits}'")
-        return jsonify({"digits": all_digits}), 200
-
+            print(f"Итоговые цифры: '{all_digits}'")
+            return jsonify({"digits": all_digits}), 200
+        
     except Exception as e:
-        print(f"OCR ошибка: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+            print(f"OCR ошибка: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": str(e)}), 500
 
 # ---------- ОСНОВНОЙ ЭНДПОИНТ /upload ----------
 @app.route('/upload', methods=['POST'])
