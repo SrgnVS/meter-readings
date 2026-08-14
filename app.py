@@ -122,28 +122,48 @@ def backup_readings_to_storage():
 @app.route('/recognize', methods=['POST'])
 def recognize():
     try:
+        print("=== /recognize вызван ===")
         if 'photo' not in request.files:
+            print("Нет файла photo в запросе")
             return jsonify({"error": "No photo"}), 400
 
         photo_file = request.files['photo']
+        print(f"Имя файла: {photo_file.filename}")
+        
         image_data = photo_file.read()
+        print(f"Размер фото: {len(image_data)} байт")
+        
+        if len(image_data) == 0:
+            print("Пустое изображение")
+            return jsonify({"digits": ""}), 200
+
+        # Открываем изображение через PIL
         img = Image.open(io.BytesIO(image_data))
+        print(f"Изображение открыто: {img.size}")
 
         # Распознаём текст
         result = reader.readtext(img, detail=1, paragraph=False)
+        print(f"Результат распознавания: {result}")
+
         if not result:
+            print("Ничего не распознано")
             return jsonify({"digits": ""}), 200
 
-        # Собираем все цифры из всех блоков
+        # Собираем все цифры
         all_digits = ""
         for (bbox, text, confidence) in result:
+            print(f"Распознан текст: '{text}' с уверенностью {confidence:.2f}")
             digits = ''.join(ch for ch in text if ch.isdigit())
             if digits:
                 all_digits += digits
 
+        print(f"Итоговые цифры: '{all_digits}'")
         return jsonify({"digits": all_digits}), 200
+
     except Exception as e:
-        print(f"OCR error: {e}")
+        print(f"OCR ошибка: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 # ---------- ОСНОВНОЙ ЭНДПОИНТ /upload ----------
