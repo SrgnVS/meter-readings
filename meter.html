@@ -368,37 +368,66 @@
                 return;
             }
         
-            // Шаг 1: захватываем кадр
-            const fullCanvas = document.createElement('canvas');
-            fullCanvas.width = video.videoWidth;
-            fullCanvas.height = video.videoHeight;
-            const ctx = fullCanvas.getContext('2d');
-            ctx.drawImage(video, 0, 0);
+            // Получаем реальные размеры видео
+            const videoWidth = video.videoWidth;
+            const videoHeight = video.videoHeight;
         
-            // Шаг 2: вырезаем центр (70% ширины, 40% высоты)
-            const cropX = fullCanvas.width * 0.15;
-            const cropY = fullCanvas.height * 0.30;
-            const cropW = fullCanvas.width * 0.70;
-            const cropH = fullCanvas.height * 0.40;
+            // Получаем отображаемые размеры видео (CSS)
+            const displayWidth = video.offsetWidth;
+            const displayHeight = video.offsetHeight;
         
+            // Коэффициенты масштабирования из-за object-fit: cover
+            const scale = Math.max(displayWidth / videoWidth, displayHeight / videoHeight);
+            const viewWidth = videoWidth * scale;
+            const viewHeight = videoHeight * scale;
+        
+            const xOffset = (viewWidth - displayWidth) / 2;
+            const yOffset = (viewHeight - displayHeight) / 2;
+        
+            // Получаем координаты жёлтой рамки
+            const overlay = document.querySelector('.crop-box');
+            const rect = overlay.getBoundingClientRect();
+            const containerRect = video.parentElement.getBoundingClientRect();
+        
+            // Вычисляем проценты рамки относительно видео
+            const cropXPercent = (rect.left - containerRect.left + xOffset) / viewWidth;
+            const cropYPercent = (rect.top - containerRect.top + yOffset) / viewHeight;
+            const cropWPercent = rect.width / viewWidth;
+            const cropHPercent = rect.height / viewHeight;
+        
+            // Финальные координаты на реальном видео
+            const sourceX = cropXPercent * videoWidth;
+            const sourceY = cropYPercent * videoHeight;
+            const sourceW = cropWPercent * videoWidth;
+            const sourceH = cropHPercent * videoHeight;
+        
+            // Создаём canvas для захвата видео
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = videoWidth;
+            tempCanvas.height = videoHeight;
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.drawImage(video, 0, 0);
+        
+            // Вырезаем область
             const croppedCanvas = document.createElement('canvas');
-            croppedCanvas.width = cropW;
-            croppedCanvas.height = cropH;
+            croppedCanvas.width = sourceW;
+            croppedCanvas.height = sourceH;
             const croppedCtx = croppedCanvas.getContext('2d');
-            croppedCtx.drawImage(fullCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+            croppedCtx.drawImage(tempCanvas, sourceX, sourceY, sourceW, sourceH, 0, 0, sourceW, sourceH);
         
-            // Шаг 3: обновляем превью
-            previewCanvas.width = cropW;
-            previewCanvas.height = cropH;
-            ctxPreview.clearRect(0, 0, cropW, cropH);
+            // Показываем превью
+            previewCanvas.width = sourceW;
+            previewCanvas.height = sourceH;
+            ctxPreview.clearRect(0, 0, sourceW, sourceH);
             ctxPreview.drawImage(croppedCanvas, 0, 0);
         
-            // Шаг 4: сохраняем blob
+            // Сохраняем blob
             croppedCanvas.toBlob(function(blob) {
                 if (!blob) {
-                    alert('Ошибка создания фото');
+                    alert('Ошибка создания фото.');
                     return;
                 }
+                console.log('Обрезанный blob размер:', blob.size);
                 currentMeterData.photoBlob = blob;
                 currentMeterData.photoDataURL = croppedCanvas.toDataURL('image/jpeg', 0.92);
         
