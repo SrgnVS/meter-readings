@@ -506,6 +506,9 @@ def readings_view():
         return page
     except Exception as e:
         return f"Ошибка: {e}", 500
-
+@app.route('/test')
+def test():
+    return "Test OK"
+    
 if __name__ == '__main__':
     app.run(debug=True)
