@@ -131,7 +131,7 @@ def recognize():
             return jsonify({"error": "No photo"}), 400
 
         photo_file = request.files['photo']
-        print(f"Имя файла: {photo_file.filename}")
+        print(f"Файл: {photo_file.filename}")
         image_data = photo_file.read()
         print(f"Размер фото: {len(image_data)} байт")
 
@@ -164,7 +164,6 @@ def recognize():
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
-
 # ---------- ОСНОВНОЙ ЭНДПОИНТ /upload ----------
 @app.route('/upload', methods=['POST'])
 def upload():
