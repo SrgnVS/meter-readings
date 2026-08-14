@@ -193,6 +193,7 @@
         }
 
         const SERVER_URL = 'https://meter-readings.relaxdev.ru/upload';
+        const RECOGNIZE_URL = 'https://meter-readings.relaxdev.ru/recognize';
         let currentMeterData = { qr: '', photoBlob: null, photoDataURL: '' };
         let html5QrCode = null;
         let stream = null;
@@ -355,7 +356,44 @@
             showStep('step-start');
         });
 
-        // ======== ГЛАВНАЯ ЛОГИКА ОБРЕЗКИ (рабочая) ========
+        // ======== ФУНКЦИЯ РАСПОЗНАВАНИЯ ========
+        async function recognizePhoto(blob) {
+            const statusEl = document.getElementById('submit-status');
+            statusEl.textContent = '⏳ Распознаём цифры...';
+            statusEl.className = 'status-box';
+
+            const formData = new FormData();
+            formData.append('photo', blob, 'cropped.jpg');
+
+            try {
+                const response = await fetch(RECOGNIZE_URL, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const digits = data.digits || '';
+                    if (digits) {
+                        document.getElementById('input-meter').value = digits;
+                        statusEl.textContent = '✅ Распознано: ' + digits;
+                        statusEl.className = 'status-box success';
+                    } else {
+                        statusEl.textContent = '⚠️ Цифры не найдены, введите вручную';
+                        statusEl.className = 'status-box error';
+                    }
+                } else {
+                    statusEl.textContent = '⚠️ Ошибка распознавания, введите вручную';
+                    statusEl.className = 'status-box error';
+                }
+            } catch (e) {
+                console.warn('Ошибка распознавания:', e);
+                statusEl.textContent = '⚠️ Сервер недоступен, введите вручную';
+                statusEl.className = 'status-box error';
+            }
+        }
+
+        // ======== ГЛАВНАЯ ЛОГИКА ОБРЕЗКИ (с вызовом распознавания) ========
         document.getElementById('btn-take-photo').addEventListener('click', function() {
             const video = document.getElementById('photo-video');
             if (!video.videoWidth || !video.videoHeight) {
@@ -426,11 +464,15 @@
                 currentMeterData.photoBlob = blob;
                 currentMeterData.photoDataURL = croppedCanvas.toDataURL('image/jpeg', 0.92);
 
+                // Переходим к ручному вводу
                 stopCamera();
                 showStep('step-manual-read');
                 document.getElementById('input-meter').value = '';
                 document.getElementById('submit-status').textContent = '';
                 document.getElementById('btn-submit').disabled = false;
+
+                // Запускаем распознавание (асинхронно, не блокирует UI)
+                recognizePhoto(blob);
             }, 'image/jpeg', 0.92);
         });
 
