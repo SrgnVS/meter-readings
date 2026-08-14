@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, send_from_directory
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 import os
@@ -8,6 +8,11 @@ import csv
 from io import StringIO
 import requests
 import html
+
+# ========== НОВЫЕ ИМПОРТЫ ДЛЯ OCR ==========
+import easyocr
+import io
+from PIL import Image
 
 app = Flask(__name__)
 CORS(app)
@@ -20,6 +25,9 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
 STORAGE_API_KEY = os.environ.get('STORAGE_API_KEY')
 STORAGE_UPLOAD_URL = "https://relaxdev.ru/api/v1/storage/upload"
+
+# ========== ИНИЦИАЛИЗАЦИЯ EASYOCR (ГЛОБАЛЬНО) ==========
+reader = easyocr.Reader(['en'], gpu=False)
 
 # ---------- БАЗА ДАННЫХ ----------
 def get_db():
@@ -110,7 +118,35 @@ def backup_readings_to_storage():
     except Exception as e:
         print(f"❌ Исключение: {e}")
 
-# ---------- ЭНДПОИНТЫ ----------
+# ---------- ЭНДПОИНТ ДЛЯ РАСПОЗНАВАНИЯ (OCR) ----------
+@app.route('/recognize', methods=['POST'])
+def recognize():
+    try:
+        if 'photo' not in request.files:
+            return jsonify({"error": "No photo"}), 400
+
+        photo_file = request.files['photo']
+        image_data = photo_file.read()
+        img = Image.open(io.BytesIO(image_data))
+
+        # Распознаём текст
+        result = reader.readtext(img, detail=1, paragraph=False)
+        if not result:
+            return jsonify({"digits": ""}), 200
+
+        # Собираем все цифры из всех блоков
+        all_digits = ""
+        for (bbox, text, confidence) in result:
+            digits = ''.join(ch for ch in text if ch.isdigit())
+            if digits:
+                all_digits += digits
+
+        return jsonify({"digits": all_digits}), 200
+    except Exception as e:
+        print(f"OCR error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+# ---------- ОСНОВНОЙ ЭНДПОИНТ /upload ----------
 @app.route('/upload', methods=['POST'])
 def upload():
     try:
@@ -209,6 +245,7 @@ def upload():
         print(f"Error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+# ---------- ДОПОЛНИТЕЛЬНЫЕ ЭНДПОИНТЫ ----------
 @app.route('/')
 def index():
     return 'Server for meter readings is running!'
@@ -294,8 +331,8 @@ def readings_view():
                 continue
 
             csv_content = csv_response.content.decode('utf-8-sig')
-            reader = csv.reader(StringIO(csv_content), delimiter=';')
-            rows = list(reader)
+            reader_csv = csv.reader(StringIO(csv_content), delimiter=';')
+            rows = list(reader_csv)
             if not rows:
                 continue
 
