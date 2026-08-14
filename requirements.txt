@@ -1,6 +1,2 @@
 Flask
 gunicorn
-Flask-CORS
-requests
-easyocr
-Pillow
