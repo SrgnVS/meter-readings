@@ -357,10 +357,10 @@
             }
         
             // Параметры обрезки (центрированная область, 70% ширины, 40% высоты)
-            const cropLeft = 0.15;   // 15% от левого края
-            const cropTop = 0.30;    // 30% от верхнего края
-            const cropWidth = 0.70;  // 70% ширины
-            const cropHeight = 0.40; // 40% высоты
+            const cropLeft = 0.15;
+            const cropTop = 0.30;
+            const cropWidth = 0.70;
+            const cropHeight = 0.40;
         
             // Создаём временный canvas для захвата всего видео
             const tempCanvas = document.createElement('canvas');
@@ -388,7 +388,10 @@
                     alert('Ошибка создания фото.');
                     return;
                 }
-                // Сохраняем blob и dataURL
+                // 🔍 ЛОГИРОВАНИЕ РАЗМЕРА
+                console.log('Обрезанный blob размер:', blob.size);
+                console.log('Размер полного кадра:', tempCanvas.width * tempCanvas.height * 4);
+                
                 currentMeterData.photoBlob = blob;
                 currentMeterData.photoDataURL = resultCanvas.toDataURL('image/jpeg', 0.92);
         
