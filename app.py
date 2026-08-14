@@ -117,7 +117,9 @@ def backup_readings_to_storage():
             print(f"❌ Ошибка: {response.status_code} - {response.text}")
     except Exception as e:
         print(f"❌ Исключение: {e}")
-
+@app.route('/ping')
+def ping():
+    return "pong"
 # ---------- ЭНДПОИНТ ДЛЯ РАСПОЗНАВАНИЯ (OCR) ----------
 @app.route('/recognize', methods=['GET', 'POST'])
 def recognize():
