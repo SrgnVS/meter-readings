@@ -52,7 +52,7 @@ def upload():
         qr_data = request.form.get('qr', 'нет_qr')
         timestamp = request.form.get('timestamp', datetime.now().isoformat())
 
-        # Создаём таблицу, если её нет
+        # Создаём таблицу при первом сохранении
         init_db()
 
         moscow_tz = timezone(timedelta(hours=3))
