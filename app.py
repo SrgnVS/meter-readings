@@ -24,6 +24,14 @@ def recognize():
     if request.method == 'GET':
         return "OCR endpoint is working (EasyOCR disabled).", 200
     return jsonify({"digits": "12345"}), 200
+    
+@app.route('/upload', methods=['POST'])
+def upload():
+    try:
+        # Пока просто возвращаем успех
+        return jsonify({"status": "ok", "message": "upload working"}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     app.run()
