@@ -312,6 +312,11 @@
             showStep('step-start');
         });
 
+        document.getElementById('btn-retry-photo').addEventListener('click', () => {
+            showStep('step-photo');
+            startPhotoCamera();
+        });
+
         document.getElementById('btn-manual').addEventListener('click', () => {
             showStep('step-manual-id');
             document.getElementById('input-meter-id').value = '';
