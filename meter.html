@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Счётчик</title>
-    <!-- QR-сканер -->
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
         * { box-sizing: border-box; font-family: system-ui, sans-serif; margin: 0; padding: 0; }
@@ -38,6 +37,61 @@
         .hidden { display: none; }
         #pending-count { text-align:center; font-size:14px; color:#64748b; margin-top:8px; }
         #qr-result { font-size:14px; text-align:center; min-height: 24px; margin-top: 8px; }
+        .crop-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .crop-box {
+            width: 70%;
+            height: 40%;
+            border: 4px solid #FFD700;
+            border-radius: 16px;
+            background: rgba(255, 215, 0, 0.05);
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .crop-box::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            border-radius: 18px;
+            border: 2px dashed rgba(255, 215, 0, 0.5);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.3; }
+            50% { opacity: 1; }
+            100% { opacity: 0.3; }
+        }
+        .crop-box::after {
+            content: 'Наведите сюда цифры';
+            position: absolute;
+            bottom: -32px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #FFD700;
+            font-size: 14px;
+            font-weight: bold;
+            white-space: nowrap;
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.9);
+            background: rgba(0,0,0,0.5);
+            padding: 4px 12px;
+            border-radius: 20px;
+        }
     </style>
 </head>
 <body>
@@ -48,7 +102,7 @@
     <div id="step-start" class="step active">
         <button class="btn" id="btn-scan-qr">📷 Сканировать QR-код счётчика</button>
         <button class="btn btn-secondary" id="btn-manual">✏️ Ввести показания вручную</button>
-        <button class="btn btn-secondary" id="btn-history">📋 Показания для отправки</button>
+        <button class="btn btn-secondary" id="btn-history">📋 История отправок</button>
         <div id="pending-count"></div>
     </div>
 
@@ -72,13 +126,19 @@
         <button class="btn btn-secondary" id="btn-manual-id-cancel">Отмена</button>
     </div>
 
-    <!-- Шаг 4: Фотографирование -->
+    <!-- Шаг 4: Фотографирование с отображением QR -->
     <div id="step-photo" class="step">
+        <div style="text-align: center; font-size: 16px; color: #2563eb; margin-bottom: 8px; font-weight: 500;">
+            Счётчик: <span id="qr-display">—</span>
+        </div>
         <div class="video-container">
             <div class="video-wrapper">
                 <video id="photo-video" autoplay playsinline></video>
+                <div class="crop-overlay">
+                    <div class="crop-box"></div>
+                </div>
             </div>
-            <div class="overlay-text">Наведите и нажмите «Сделать фото»</div>
+            <div class="overlay-text">Поместите цифры в рамку и нажмите 📸</div>
         </div>
         <div class="row">
             <button class="btn" id="btn-take-photo">📸 Сделать фото</button>
@@ -150,7 +210,7 @@
             document.getElementById(id).classList.add('active');
         }
 
-        // Камера для фото
+        // Камера
         async function startCamera(videoElement, facingMode = 'environment') {
             try {
                 if (stream) { stream.getTracks().forEach(t => t.stop()); }
@@ -181,7 +241,7 @@
             }
         }
 
-        // ----- QR-сканер (квадратная рамка) -----
+        // QR-сканер
         function startQrScanner() {
             if (typeof Html5Qrcode === 'undefined') {
                 document.getElementById('qr-result').textContent = '❌ Библиотека не загружена';
@@ -196,12 +256,7 @@
             }
 
             html5QrCode = new Html5Qrcode("qr-reader");
-            // Квадратная рамка (250x250)
-            const config = {
-                fps: 15,
-                qrbox: { width: 250, height: 250 },
-                aspectRatio: 1.0
-            };
+            const config = { fps: 15, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
 
             document.getElementById('qr-result').textContent = '⏳ Запуск камеры...';
 
@@ -211,6 +266,8 @@
                 (decodedText) => {
                     document.getElementById('qr-result').textContent = '✅ QR найден: ' + decodedText;
                     currentMeterData.qr = decodedText;
+                    // Показываем QR на шаге фото
+                    document.getElementById('qr-display').textContent = decodedText;
                     html5QrCode.stop().then(() => {
                         html5QrCode = null;
                         showStep('step-photo');
@@ -229,7 +286,7 @@
             });
         }
 
-        // ----- Обработчики -----
+        // Обработчики
         document.getElementById('btn-scan-qr').addEventListener('click', () => {
             showStep('step-qr');
             document.getElementById('qr-result').textContent = '⏳ Подготовка...';
@@ -245,6 +302,7 @@
         document.getElementById('btn-manual').addEventListener('click', () => {
             showStep('step-manual-id');
             document.getElementById('input-meter-id').value = '';
+            document.getElementById('qr-display').textContent = '—';
         });
 
         document.getElementById('btn-manual-id-next').addEventListener('click', () => {
@@ -254,6 +312,7 @@
                 return;
             }
             currentMeterData.qr = id;
+            document.getElementById('qr-display').textContent = id;
             currentMeterData.photoBlob = null;
             currentMeterData.photoDataURL = '';
             showStep('step-photo');
@@ -270,7 +329,7 @@
         });
         document.getElementById('btn-history-back').addEventListener('click', () => showStep('step-start'));
 
-        // ----- Фото -----
+        // Фото
         async function startPhotoCamera() {
             const video = document.getElementById('photo-video');
             const ok = await startCamera(video, 'environment');
@@ -279,28 +338,39 @@
 
         document.getElementById('btn-take-photo').addEventListener('click', () => {
             const video = document.getElementById('photo-video');
-            if (!video.videoWidth || !video.videoHeight) {
-                alert('Камера не готова, попробуйте ещё раз.');
-                return;
-            }
+            if (!video.videoWidth || !video.videoHeight) { alert('Камера не готова'); return; }
 
-            // Захватываем весь кадр
-            photoCanvas.width = video.videoWidth;
-            photoCanvas.height = video.videoHeight;
-            const ctx = photoCanvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, photoCanvas.width, photoCanvas.height);
+            // Обрезка по рамке
+            const cropLeft = 0.15;
+            const cropTop = 0.30;
+            const cropWidth = 0.70;
+            const cropHeight = 0.40;
 
-            photoCanvas.toBlob((blob) => {
-                if (!blob) {
-                    alert('Ошибка создания фото.');
-                    return;
-                }
+            const cropX = cropLeft * video.videoWidth;
+            const cropY = cropTop * video.videoHeight;
+            const cropW = cropWidth * video.videoWidth;
+            const cropH = cropHeight * video.videoHeight;
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = video.videoWidth;
+            tempCanvas.height = video.videoHeight;
+            const ctx = tempCanvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+
+            const resultCanvas = document.createElement('canvas');
+            resultCanvas.width = cropW;
+            resultCanvas.height = cropH;
+            const resultCtx = resultCanvas.getContext('2d');
+            resultCtx.drawImage(tempCanvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+
+            resultCanvas.toBlob((blob) => {
+                if (!blob) { alert('Ошибка создания фото.'); return; }
                 currentMeterData.photoBlob = blob;
-                currentMeterData.photoDataURL = photoCanvas.toDataURL('image/jpeg', 0.92);
-                previewCanvas.width = photoCanvas.width;
-                previewCanvas.height = photoCanvas.height;
-                ctxPreview.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
-                ctxPreview.drawImage(photoCanvas, 0, 0);
+                currentMeterData.photoDataURL = resultCanvas.toDataURL('image/jpeg', 0.92);
+                previewCanvas.width = cropW;
+                previewCanvas.height = cropH;
+                ctxPreview.clearRect(0, 0, cropW, cropH);
+                ctxPreview.drawImage(resultCanvas, 0, 0);
                 stopCamera();
                 showStep('step-manual-read');
                 document.getElementById('input-meter').value = '';
@@ -319,18 +389,15 @@
             startPhotoCamera();
         });
 
-        // ----- Отправка -----
+        // Отправка
         document.getElementById('btn-submit').addEventListener('click', async () => {
             const input = document.getElementById('input-meter');
             const value = input.value.trim();
-            if (!value) {
-                document.getElementById('submit-status').textContent = '❌ Введите показания!';
-                return;
-            }
+            if (!value) { document.getElementById('submit-status').textContent = '❌ Введите показания!'; return; }
             const submitStatus = document.getElementById('submit-status');
             submitStatus.textContent = '⏳ Отправка...';
             document.getElementById('btn-submit').disabled = true;
-        
+
             const formData = new FormData();
             formData.append('qr', currentMeterData.qr || '');
             formData.append('meter_reading', value);
@@ -338,7 +405,7 @@
                 formData.append('photo', currentMeterData.photoBlob, 'meter.jpg');
             }
             formData.append('timestamp', new Date().toISOString());
-        
+
             try {
                 const response = await fetch(SERVER_URL, { method: 'POST', body: formData });
                 if (response.ok) {
@@ -352,14 +419,11 @@
                         submitStatus.textContent = '';
                     }, 2000);
                 } else if (response.status === 400) {
-                    // Ошибка валидации (показание не выросло)
                     const data = await response.json();
                     submitStatus.textContent = '❌ ' + (data.message || 'Ошибка валидации данных');
                     submitStatus.className = 'status-box error';
                     document.getElementById('btn-submit').disabled = false;
-                    // Не добавляем в очередь, пользователь может исправить и отправить снова
                 } else {
-                    // Другие ошибки (сервер недоступен и т.п.)
                     throw new Error('Сервер вернул ' + response.status);
                 }
             } catch (e) {
@@ -381,7 +445,7 @@
             }
         });
 
-        // ----- История -----
+        // История
         function renderHistory() {
             const list = document.getElementById('history-list');
             const queue = getQueue();
