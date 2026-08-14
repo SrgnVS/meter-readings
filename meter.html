@@ -20,16 +20,14 @@
         .btn:disabled { opacity: 0.5; pointer-events: none; }
         .video-container, .canvas-container { background: #1e293b; border-radius: 20px; overflow: hidden; position: relative; aspect-ratio: 4/3; display: flex; align-items: center; justify-content: center; }
         #qr-reader { width: 100%; height: 100%; }
-        .video-wrapper { position: relative; width: 100%; height: 100%; overflow: hidden; background: #1e293b; }
-        .video-wrapper video { 
+        .video-wrapper { position: relative; width: 100%; height: 100%; background: #6b7280; overflow: hidden; }
+        .video-wrapper video {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            min-width: 100%;
-            min-height: 100%;
-            width: auto;
-            height: auto;
+            width: 100%;
+            height: 100%;
             object-fit: cover;
             display: block;
         }
@@ -61,8 +59,8 @@
             z-index: 10;
         }
         .crop-box {
-            width: 70%;
-            height: 30%;
+            width: 85%;
+            height: 25%;
             border: 4px solid #FFD700;
             border-radius: 16px;
             background: rgba(255, 215, 0, 0.05);
