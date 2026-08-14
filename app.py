@@ -123,13 +123,13 @@ def backup_readings_to_storage():
 def recognize():
     if request.method == 'GET':
         return "OCR endpoint is working. Use POST with photo.", 200
+
     try:
         print("=== /recognize POST вызван ===")
         if 'photo' not in request.files:
             print("Нет файла photo в запросе")
             return jsonify({"error": "No photo"}), 400
 
-        # ИСПРАВЛЕНО: Выровнены отступы и убран код из тела условия if
         photo_file = request.files['photo']
         print(f"Имя файла: {photo_file.filename}")
         image_data = photo_file.read()
@@ -158,7 +158,7 @@ def recognize():
 
         print(f"Итоговые цифры: '{all_digits}'")
         return jsonify({"digits": all_digits}), 200
-        
+
     except Exception as e:
         print(f"OCR ошибка: {e}")
         import traceback
