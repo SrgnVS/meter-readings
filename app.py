@@ -119,7 +119,7 @@ def backup_readings_to_storage():
         print(f"❌ Исключение: {e}")
 
 # ---------- ЭНДПОИНТ ДЛЯ РАСПОЗНАВАНИЯ (OCR) ----------
-@app.route('/recognize', methods=['POST'])
+@app.route('/recognize', methods=['GET', 'POST'])
 def recognize():
     try:
         print("=== /recognize вызван ===")
