@@ -2,7 +2,3 @@ Flask
 gunicorn
 Flask-CORS
 requests
-easyocr
-Pillow
-opencv-python
-numpy
