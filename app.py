@@ -8,39 +8,19 @@ import csv
 from io import StringIO
 import requests
 import html
-import cv2
-import numpy as np
 
-# ========== НАСТРОЙКА ПРИЛОЖЕНИЯ ==========
 app = Flask(__name__)
-CORS(app)  # разрешаем запросы с любых доменов
+CORS(app)
 
-# ---------- ХРАНИЛИЩЕ (временная папка) ----------
 UPLOAD_FOLDER = '/tmp/uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
-# ---------- STORAGE API (RelaxDev) ----------
 STORAGE_API_KEY = os.environ.get('STORAGE_API_KEY')
 STORAGE_UPLOAD_URL = "https://relaxdev.ru/api/v1/storage/upload"
 
-# ========== OCR (EasyOCR) ==========
-import easyocr
-import io
-from PIL import Image
-
-# Инициализируем EasyOCR (глобально, один раз)
-try:
-    reader = easyocr.Reader(['en'], gpu=False)
-    OCR_AVAILABLE = True
-    print("✅ EasyOCR инициализирован")
-except Exception as e:
-    print(f"❌ EasyOCR не загружен: {e}")
-    reader = None
-    OCR_AVAILABLE = False
-
-# ========== БАЗА ДАННЫХ ==========
+# ---------- БАЗА ДАННЫХ ----------
 def get_db():
     db_path = os.path.join(os.path.dirname(__file__), 'meter_data.db')
     conn = sqlite3.connect(db_path)
@@ -63,10 +43,9 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Создаём таблицу при первом запуске (если ещё нет)
 init_db()
 
-# ========== БЭКАП В STORAGE ==========
+# ---------- БЭКАП В STORAGE ----------
 def backup_readings_to_storage():
     try:
         conn = get_db()
@@ -130,7 +109,7 @@ def backup_readings_to_storage():
     except Exception as e:
         print(f"❌ Исключение в бэкапе: {e}")
 
-# ========== ЭНДПОИНТЫ ==========
+# ---------- ЭНДПОИНТЫ ----------
 
 @app.route('/')
 def index():
@@ -140,81 +119,6 @@ def index():
 def ping():
     return 'pong'
 
-# ---- РАСПОЗНАВАНИЕ (OCR) ----
-@app.route('/recognize', methods=['GET', 'POST'])
-def recognize():
-    if request.method == 'GET':
-        if OCR_AVAILABLE:
-            return "OCR endpoint is working with EasyOCR", 200
-        else:
-            return "OCR endpoint is working (EasyOCR disabled)", 200
-
-    if not OCR_AVAILABLE:
-        return jsonify({"digits": "12345"}), 200
-
-    try:
-        if 'photo' not in request.files:
-            return jsonify({"error": "No photo"}), 400
-
-        photo_file = request.files['photo']
-        image_data = photo_file.read()
-        if len(image_data) == 0:
-            return jsonify({"digits": ""}), 200
-
-        # --- Предобработка с уменьшением размера ---
-        import cv2
-        import numpy as np
-        img_array = np.frombuffer(image_data, np.uint8)
-        img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-        
-        # Уменьшаем размер для экономии памяти
-        scale_percent = 60  # 60% от оригинала
-        width = int(img.shape[1] * scale_percent / 100)
-        height = int(img.shape[0] * scale_percent / 100)
-        dim = (width, height)
-        img_resized = cv2.resize(img, dim, interpolation=cv2.INTER_AREA)
-        
-        gray = cv2.cvtColor(img_resized, cv2.COLOR_BGR2GRAY)
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-        enhanced = clahe.apply(gray)
-        binary = cv2.adaptiveThreshold(enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-        is_success, buffer = cv2.imencode('.jpg', binary)
-        processed_image_data = buffer.tobytes()
-        # --- Конец предобработки ---
-
-        img_final = Image.open(io.BytesIO(processed_image_data))
-        result = reader.readtext(img_final, detail=1, paragraph=False)
-
-        if not result:
-            return jsonify({"digits": ""}), 200
-
-        # Фильтрация: берём самую длинную последовательность цифр длиной 5–7
-        all_text = " ".join([text for (bbox, text, confidence) in result])
-        import re
-        digit_sequences = re.findall(r'\d+', all_text)
-        if not digit_sequences:
-            return jsonify({"digits": ""}), 200
-
-        digit_sequences.sort(key=len, reverse=True)
-        chosen = None
-        for seq in digit_sequences:
-            if 5 <= len(seq) <= 7:
-                chosen = seq
-                break
-        if chosen is None and digit_sequences and len(digit_sequences[0]) >= 4:
-            chosen = digit_sequences[0]
-        if chosen is None:
-            return jsonify({"digits": ""}), 200
-
-        return jsonify({"digits": chosen}), 200
-
-    except Exception as e:
-        print(f"OCR ошибка: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
-        
-# ---- ОСНОВНОЙ UPLOAD ----
 @app.route('/upload', methods=['POST'])
 def upload():
     try:
@@ -223,7 +127,7 @@ def upload():
         timestamp = request.form.get('timestamp', datetime.now().isoformat())
         photo_file = request.files.get('photo')
 
-        # Проверка на рост показаний
+        # Проверка роста показаний
         if qr_data and qr_data != 'нет_qr':
             conn_check = get_db()
             cursor_check = conn_check.cursor()
@@ -233,7 +137,6 @@ def upload():
             )
             last_row = cursor_check.fetchone()
             conn_check.close()
-
             if last_row:
                 try:
                     last_val = float(last_row['meter_reading'].replace(',', '.'))
@@ -244,9 +147,8 @@ def upload():
                             "message": f"Новое показание ({meter_value}) должно быть больше предыдущего ({last_row['meter_reading']})"
                         }), 400
                 except ValueError:
-                    pass  # если не число – пропускаем проверку
+                    pass
 
-        # Очищаем QR для имени файла
         qr_clean = ''.join(c for c in qr_data if c.isalnum() or c in '-_')
         if not qr_clean:
             qr_clean = "unknown"
@@ -260,12 +162,10 @@ def upload():
             filename = secure_filename(f"{base_filename}.jpg")
 
             if not STORAGE_API_KEY:
-                # Если нет ключа – сохраняем локально
                 filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 photo_file.save(filepath)
                 photo_url = f"/local_photo/{filename}"
             else:
-                # Пытаемся загрузить в Storage
                 photo_file.stream.seek(0)
                 files = {'file': (filename, photo_file.stream, 'image/jpeg')}
                 headers = {'Authorization': f'Bearer {STORAGE_API_KEY}'}
@@ -275,21 +175,17 @@ def upload():
                     files=files,
                     data={'webp': 'false'}
                 )
-
                 if response.status_code == 200:
                     data = response.json()
                     if data.get('success'):
                         photo_url = data.get('url')
                         print(f"Фото загружено в Storage: {photo_url}")
-
-                # Если не удалось – сохраняем локально
                 if not photo_url:
                     photo_file.stream.seek(0)
                     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                     photo_file.save(filepath)
                     photo_url = f"/local_photo/{filename}"
 
-        # Сохраняем запись в БД
         created_at_str = datetime.now(moscow_tz).strftime('%Y-%m-%d %H:%M:%S')
         conn = get_db()
         cursor = conn.cursor()
@@ -300,7 +196,6 @@ def upload():
         conn.commit()
         conn.close()
 
-        # Запускаем бэкап в Storage (в фоне, но здесь синхронно)
         try:
             backup_readings_to_storage()
         except Exception as e:
@@ -316,7 +211,6 @@ def upload():
         print(f"Ошибка в /upload: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# ---- ПРОСМОТР ВСЕХ ЗАПИСЕЙ (JSON) ----
 @app.route('/readings', methods=['GET'])
 def get_readings():
     conn = get_db()
@@ -326,7 +220,6 @@ def get_readings():
     conn.close()
     return jsonify([dict(row) for row in rows])
 
-# ---- СКАЧИВАНИЕ БАЗЫ ДАННЫХ ----
 @app.route('/download_db')
 def download_db():
     db_path = os.path.join(os.path.dirname(__file__), 'meter_data.db')
@@ -334,7 +227,6 @@ def download_db():
         return "База данных ещё не создана.", 404
     return send_file(db_path, as_attachment=True)
 
-# ---- ЭКСПОРТ CSV (скачивание) ----
 @app.route('/export')
 def export_csv():
     conn = get_db()
@@ -363,16 +255,13 @@ def export_csv():
     )
     return response
 
-# ---- ЛОКАЛЬНОЕ ФОТО (если не загружено в Storage) ----
 @app.route('/local_photo/<filename>')
 def get_local_photo(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-# ---- СТРАНИЦА ДЛЯ ПРОСМОТРА (последние два показания по каждому счётчику) ----
 @app.route('/readings_view')
 def readings_view():
     try:
-        # Берём данные из последнего бэкапа в Storage
         list_url = "https://relaxdev.ru/api/v1/storage/files?path=data/backups"
         headers = {'Authorization': f'Bearer {STORAGE_API_KEY}'}
         response = requests.get(list_url, headers=headers)
@@ -387,10 +276,8 @@ def readings_view():
         if not files:
             return "Нет бэкапов в папке data/backups", 404
 
-        # Сортируем по дате изменения (свежие сверху)
         files_sorted = sorted(files, key=lambda f: f.get('lastModified', ''), reverse=True)
 
-        # Собираем все записи из всех бэкапов (уникализируем по (qr, created_at))
         unique_records = {}
         for file_info in files_sorted:
             file_path = file_info['path']
@@ -399,11 +286,11 @@ def readings_view():
             if csv_resp.status_code != 200:
                 continue
             csv_content = csv_resp.content.decode('utf-8-sig')
-            reader = csv.reader(StringIO(csv_content), delimiter=';')
-            rows = list(reader)
+            reader_csv = csv.reader(StringIO(csv_content), delimiter=';')
+            rows = list(reader_csv)
             if not rows:
                 continue
-            for row in rows[1:]:  # пропускаем заголовок
+            for row in rows[1:]:
                 if len(row) < 6:
                     continue
                 qr = row[1].strip()
@@ -423,7 +310,6 @@ def readings_view():
         if not unique_records:
             return "Нет данных в бэкапах", 404
 
-        # Группируем по QR
         grouped = {}
         for key, rec in unique_records.items():
             qr = rec['qr']
@@ -433,7 +319,6 @@ def readings_view():
 
         result_rows = []
         for qr, recs in grouped.items():
-            # Сортируем записи по created_at (убывание)
             sorted_recs = sorted(recs, key=lambda x: x['created_at'], reverse=True)
             current = sorted_recs[0] if len(sorted_recs) > 0 else None
             previous = sorted_recs[1] if len(sorted_recs) > 1 else None
@@ -463,14 +348,12 @@ def readings_view():
 
         result_rows.sort(key=lambda x: x['qr'])
 
-        # Время последнего бэкапа (в МСК)
         last_modified_raw = files_sorted[0]['lastModified']
         dt_utc = datetime.fromisoformat(last_modified_raw.replace('Z', '+00:00'))
         moscow_tz = timezone(timedelta(hours=3))
         dt_moscow = dt_utc.astimezone(moscow_tz)
         last_modified_str = dt_moscow.strftime('%d.%m.%Y %H:%M:%S')
 
-        # Генерация HTML-страницы
         page = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -557,6 +440,5 @@ def readings_view():
     except Exception as e:
         return f"Ошибка при загрузке страницы: {e}", 500
 
-# ========== ЗАПУСК (для локальной отладки) ==========
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
