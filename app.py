@@ -141,7 +141,7 @@ def upload():
                 try:
                     last_val = float(last_row['meter_reading'].replace(',', '.'))
                     new_val = float(meter_value.replace(',', '.'))
-                    if new_val <= last_val:
+                    if new_val < last_val:
                         return jsonify({
                             "status": "error",
                             "message": f"Новое показание ({meter_value}) должно быть больше предыдущего ({last_row['meter_reading']})"
