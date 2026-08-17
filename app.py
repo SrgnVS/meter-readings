@@ -8,6 +8,8 @@ import csv
 from io import StringIO
 import requests
 import html
+import cv2
+import numpy as np
 
 # ========== НАСТРОЙКА ПРИЛОЖЕНИЯ ==========
 app = Flask(__name__)
@@ -159,14 +161,41 @@ def recognize():
         if len(image_data) == 0:
             return jsonify({"digits": ""}), 200
 
-        # Открываем изображение через Pillow
-        img = Image.open(io.BytesIO(image_data))
-        # Распознаём текст
-        result = reader.readtext(img, detail=1, paragraph=False)
+        # --- НАЧАЛО: ПРЕДОБРАБОТКА ИЗОБРАЖЕНИЯ ---
+        # 1. Читаем изображение из байтов в формате OpenCV
+        img_array = np.frombuffer(image_data, np.uint8)
+        img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+
+        # 2. Преобразуем в оттенки серого
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+        # 3. Повышаем контрастность с помощью CLAHE (адаптивная гистограмма)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        enhanced = clahe.apply(gray)
+
+        # 4. Адаптивная бинаризация (превращаем в черно-белое)
+        # Это ключевой шаг для выделения цифр на любом фоне
+        binary = cv2.adaptiveThreshold(enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+
+        # (Опционально) Увеличиваем изображение для лучшего распознавания мелких деталей
+        # scale_percent = 150 # увеличиваем на 50%
+        # width = int(binary.shape[1] * scale_percent / 100)
+        # height = int(binary.shape[0] * scale_percent / 100)
+        # dim = (width, height)
+        # resized = cv2.resize(binary, dim, interpolation=cv2.INTER_CUBIC)
+
+        # Преобразуем обработанное изображение обратно в байты для EasyOCR
+        is_success, buffer = cv2.imencode('.jpg', binary)
+        processed_image_data = buffer.tobytes()
+        # --- КОНЕЦ: ПРЕДОБРАБОТКА ---
+
+        # Открываем обработанное изображение через Pillow для EasyOCR
+        img_final = Image.open(io.BytesIO(processed_image_data))
+        result = reader.readtext(img_final, detail=1, paragraph=False)
+
         if not result:
             return jsonify({"digits": ""}), 200
 
-        # Собираем все цифры из распознанных блоков
         all_digits = ""
         for (bbox, text, confidence) in result:
             digits = ''.join(ch for ch in text if ch.isdigit())
@@ -180,7 +209,6 @@ def recognize():
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
-
 # ---- ОСНОВНОЙ UPLOAD ----
 @app.route('/upload', methods=['POST'])
 def upload():
