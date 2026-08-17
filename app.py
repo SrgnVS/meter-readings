@@ -161,54 +161,59 @@ def recognize():
         if len(image_data) == 0:
             return jsonify({"digits": ""}), 200
 
-        # --- НАЧАЛО: ПРЕДОБРАБОТКА ИЗОБРАЖЕНИЯ ---
-        # 1. Читаем изображение из байтов в формате OpenCV
+        # --- Предобработка с уменьшением размера ---
+        import cv2
+        import numpy as np
         img_array = np.frombuffer(image_data, np.uint8)
         img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-
-        # 2. Преобразуем в оттенки серого
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-        # 3. Повышаем контрастность с помощью CLAHE (адаптивная гистограмма)
+        
+        # Уменьшаем размер для экономии памяти
+        scale_percent = 60  # 60% от оригинала
+        width = int(img.shape[1] * scale_percent / 100)
+        height = int(img.shape[0] * scale_percent / 100)
+        dim = (width, height)
+        img_resized = cv2.resize(img, dim, interpolation=cv2.INTER_AREA)
+        
+        gray = cv2.cvtColor(img_resized, cv2.COLOR_BGR2GRAY)
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
         enhanced = clahe.apply(gray)
-
-        # 4. Адаптивная бинаризация (превращаем в черно-белое)
-        # Это ключевой шаг для выделения цифр на любом фоне
         binary = cv2.adaptiveThreshold(enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-
-        # (Опционально) Увеличиваем изображение для лучшего распознавания мелких деталей
-        # scale_percent = 150 # увеличиваем на 50%
-        # width = int(binary.shape[1] * scale_percent / 100)
-        # height = int(binary.shape[0] * scale_percent / 100)
-        # dim = (width, height)
-        # resized = cv2.resize(binary, dim, interpolation=cv2.INTER_CUBIC)
-
-        # Преобразуем обработанное изображение обратно в байты для EasyOCR
         is_success, buffer = cv2.imencode('.jpg', binary)
         processed_image_data = buffer.tobytes()
-        # --- КОНЕЦ: ПРЕДОБРАБОТКА ---
+        # --- Конец предобработки ---
 
-        # Открываем обработанное изображение через Pillow для EasyOCR
         img_final = Image.open(io.BytesIO(processed_image_data))
         result = reader.readtext(img_final, detail=1, paragraph=False)
 
         if not result:
             return jsonify({"digits": ""}), 200
 
-        all_digits = ""
-        for (bbox, text, confidence) in result:
-            digits = ''.join(ch for ch in text if ch.isdigit())
-            if digits:
-                all_digits += digits
+        # Фильтрация: берём самую длинную последовательность цифр длиной 5–7
+        all_text = " ".join([text for (bbox, text, confidence) in result])
+        import re
+        digit_sequences = re.findall(r'\d+', all_text)
+        if not digit_sequences:
+            return jsonify({"digits": ""}), 200
 
-        return jsonify({"digits": all_digits}), 200
+        digit_sequences.sort(key=len, reverse=True)
+        chosen = None
+        for seq in digit_sequences:
+            if 5 <= len(seq) <= 7:
+                chosen = seq
+                break
+        if chosen is None and digit_sequences and len(digit_sequences[0]) >= 4:
+            chosen = digit_sequences[0]
+        if chosen is None:
+            return jsonify({"digits": ""}), 200
+
+        return jsonify({"digits": chosen}), 200
 
     except Exception as e:
         print(f"OCR ошибка: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+        
 # ---- ОСНОВНОЙ UPLOAD ----
 @app.route('/upload', methods=['POST'])
 def upload():
