@@ -50,7 +50,7 @@ def backup_readings_to_storage():
     try:
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute('SELECT * FROM readings ORDER BY created_at DESC')
+        cursor.execute('SELECT * FROM readings ORDER BY created_at ASC')
         rows = cursor.fetchall()
         conn.close()
 
@@ -127,7 +127,7 @@ def upload():
         timestamp = request.form.get('timestamp', datetime.now().isoformat())
         photo_file = request.files.get('photo')
 
-        # Проверка роста показаний
+        # Проверка роста показаний (новое >= предыдущее)
         if qr_data and qr_data != 'нет_qr':
             conn_check = get_db()
             cursor_check = conn_check.cursor()
@@ -137,6 +137,7 @@ def upload():
             )
             last_row = cursor_check.fetchone()
             conn_check.close()
+
             if last_row:
                 try:
                     last_val = float(last_row['meter_reading'].replace(',', '.'))
@@ -144,18 +145,19 @@ def upload():
                     if new_val < last_val:
                         return jsonify({
                             "status": "error",
-                            "message": f"Новое показание ({meter_value}) должно быть больше предыдущего ({last_row['meter_reading']})"
+                            "message": f"Новое показание ({meter_value}) не может быть меньше предыдущего ({last_row['meter_reading']})"
                         }), 400
                 except ValueError:
                     pass
 
+        # Очищаем QR для имени файла
         qr_clean = ''.join(c for c in qr_data if c.isalnum() or c in '-_')
         if not qr_clean:
             qr_clean = "unknown"
 
         moscow_tz = timezone(timedelta(hours=3))
-        moscow_now = datetime.now(moscow_tz).strftime("%Y-%m-%d_%H-%M-%S")
-        base_filename = f"{qr_clean}_{moscow_now}"
+        moscow_now = datetime.now(moscow_tz).strftime("%d-%m-%Y_%H-%M-%S")
+        base_filename = f"{moscow_now}_{qr_clean}"
 
         photo_url = None
         if photo_file and photo_file.filename != '':
@@ -319,9 +321,16 @@ def readings_view():
 
         result_rows = []
         for qr, recs in grouped.items():
-            sorted_recs = sorted(recs, key=lambda x: x['created_at'], reverse=True)
-            current = sorted_recs[0] if len(sorted_recs) > 0 else None
-            previous = sorted_recs[1] if len(sorted_recs) > 1 else None
+            # Сортируем по возрастанию created_at, берём две последние (самые свежие)
+            sorted_recs = sorted(recs, key=lambda x: x['created_at'])
+            if len(sorted_recs) >= 2:
+                previous = sorted_recs[-2]
+                current = sorted_recs[-1]
+            elif len(sorted_recs) == 1:
+                previous = None
+                current = sorted_recs[0]
+            else:
+                continue
 
             diff = ''
             if previous and current:
